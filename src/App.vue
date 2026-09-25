@@ -11,7 +11,7 @@ async function onSignOut() {
 </script>
 
 <template>
-  <header v-if="session.user" class="bar">
+  <header v-if="session.user && session.claims.role" class="bar">
     <span class="who">{{ session.user.email }}</span>
     <button type="button" class="btn secondary" @click="onSignOut">Sign out</button>
   </header>

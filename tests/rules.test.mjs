@@ -79,6 +79,20 @@ describe('NFR-04 isolation', () => {
     await assertSucceeds(getDoc(doc(barber('a'), 'notifications/n1')))
     await assertFails(getDoc(doc(customer('cust1'), 'notifications/n1')))
   })
+  it('keeps a HELD appointment (no customer yet) unreadable to customers and anonymous users', async () => {
+    await env.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore(), 'appointments/held1'), { shopId: 'a', barberId: 'b1', customerId: null, status: 'HELD' }))
+    await assertFails(getDoc(doc(anon(), 'appointments/held1')))
+    await assertFails(getDoc(doc(customer('cust1'), 'appointments/held1')))
+    await assertFails(getDoc(doc(owner('b'), 'appointments/held1')))
+    await assertSucceeds(getDoc(doc(owner('a'), 'appointments/held1')))
+  })
+  it('lets a customer read the appointment only after confirmBooking assigns it to them', async () => {
+    await env.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore(), 'appointments/held2'), { shopId: 'a', barberId: 'b1', customerId: 'cust3', status: 'CONFIRMED' }))
+    await assertSucceeds(getDoc(doc(customer('cust3'), 'appointments/held2')))
+    await assertFails(getDoc(doc(customer('cust1'), 'appointments/held2')))
+  })
   it('supports listing own appointments by customerId', async () => {
     await assertSucceeds(getDocs(query(collection(customer('cust1'), 'appointments'), where('customerId', '==', 'cust1'))))
     await assertFails(getDocs(collection(customer('cust1'), 'appointments')))

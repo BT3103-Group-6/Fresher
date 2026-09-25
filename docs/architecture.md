@@ -82,7 +82,8 @@ Non-functional requirements are met across the system:
 `displayName, active, serviceIds[], workingHours`
 
 ### .../schedules/{barberId_yyyymmdd}  — concurrency lock document
-`barberId, date, intervals[]: { start, end, kind ("booking" | "hold" | "block"), refId, holdExpiresAt? }, version`
+`barberId, date, intervals[]: { start, end, kind ("booking" | "hold" | "block"), refId?, holdExpiresAt? }, version`
+`refId` (the appointment ID) is set on `booking` intervals only. Hold intervals carry no `refId`: schedules are public and the appointment ID of a hold is the `requestId`, which acts as the capability for `confirmBooking`/`releaseHold`.
 
 ### .../blocks/{blockId}
 `barberId, start, end, reason`
@@ -94,7 +95,7 @@ Per barber: `completed, valueCents, noShows, bookedMin, openMin`
 `walkInName, serviceId, barberId, joinedAt, startedAt, endedAt`
 
 ### appointments/{bookingId}  (top level; bookingId = client requestId)
-`shopId, barberId, serviceId, customerId, customerName, customerPhoneMasked, start, end, status, holdExpiresAt, priceCents, durationMin (snapshots, FR-06), requestId, lateCancel, depositId, actualStart, actualEnd (FR-10)`
+`shopId, barberId, serviceId, customerId (null while HELD; set by `confirmBooking`), customerName, customerPhoneMasked, start, end, status, holdExpiresAt, priceCents, durationMin (snapshots, FR-06), requestId, lateCancel, depositId, actualStart, actualEnd (FR-10)`
 `customerName` and `customerPhoneMasked` are copied onto the appointment by `confirmBooking` so staff never need to read `customers/{uid}`. The number is masked only (e.g. `+65 9••• ••12`); the full number is never stored on the appointment.
 
 ### customers/{uid}
@@ -135,7 +136,7 @@ Terminal: `COMPLETED, CANCELLED, EXPIRED`. `NO_SHOW` can be reversed to `CONFIRM
 | NO_SHOW | CONFIRMED | Staff: reverse | within 24 h of marking |
 
 ## Callable functions (all in asia-southeast1)
-`geocode, holdSlot, confirmBooking, cancelBooking, reschedule, markNoShow, reverseNoShow, startService, finishService, createBlock, addBarber (sets claims), createDeposit, paymentWebhook, joinWaitlist, claimOffer, verifyShop (admin)`
+`geocode, holdSlot, confirmBooking, releaseHold, cancelBooking, reschedule, markNoShow, reverseNoShow, startService, finishService, createBlock, addBarber (sets claims), createDeposit, paymentWebhook, joinWaitlist, claimOffer, verifyShop (admin)`
 
 Every state-changing function: check auth and role → load current state in a transaction → check the transition and guard from the table above → write new state **and** an `auditLog` record in the same transaction.
 
@@ -145,6 +146,8 @@ The client generates a random `requestId` per booking attempt and reuses it on r
 2. If `appointments/{requestId}` exists, return it unchanged (idempotent: repeated submissions create at most one record).
 3. In one transaction: read the barber-day schedule; ignore holds whose `holdExpiresAt` has passed; check overlap with bookings, live holds and blocks. On overlap, abort with `SLOT_TAKEN`. Otherwise add a hold interval, create the appointment as `HELD`, bump `version`, and write the audit record.
 4. Concurrent requests: Firestore commits one transaction and retries the others; retries see the overlap and return `SLOT_TAKEN`. Exactly one succeeds.
+
+`holdSlot` and `releaseHold` are unauthenticated (the customer has not yet verified an OTP); `confirmBooking` requires Phone Auth and reads the mobile number from the token, never from the client. Start times must be within the booking horizon (today to +13 days, Asia/Singapore). The 3-failed-OTP release is counted in the browser, which then calls `releaseHold(requestId)` (HELD with no customer → EXPIRED, interval removed, audit written).
 
 Reschedule adds the new interval and removes the old one in the same transaction; if the new slot is taken, nothing changes.
 "Any available" tries eligible barbers in order of fewest bookings that day (tie-break: decisions A3).

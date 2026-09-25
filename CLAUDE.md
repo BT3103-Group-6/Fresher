@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Fresher is a multi-shop barber booking app (Vue 3 + Vite frontend; Firebase Auth, Firestore, Cloud Functions, Security Rules, App Check, Hosting). It is a student prototype (BT3103). The foundation exists (`src/firebase.js` emulator wiring, real `firestore.rules`, `scripts/seed.mjs`, `tests/rules.test.mjs`), and FR-06/FR-07 exist (staff sign-in, UI-O1 shop configuration in `src/views/staff/`, Vue Router guard in `src/router/`, `addBarber` in `functions/index.js`). No customer screens or other callable functions yet; the starter template components remain unused. Most of the architecture below is design to build toward.
+Fresher is a multi-shop barber booking app (Vue 3 + Vite frontend; Firebase Auth, Firestore, Cloud Functions, Security Rules, App Check, Hosting). It is a student prototype (BT3103). The foundation exists (`src/firebase.js` emulator wiring, real `firestore.rules`, `scripts/seed.mjs`, `tests/rules.test.mjs`), and FR-06/FR-07 exist (staff sign-in, UI-O1 shop configuration in `src/views/staff/`, Vue Router guard in `src/router/`, `addBarber` in `functions/index.js`). FR-02/FR-03 exist (UI-C2/C3 in `src/views/customer/`, `holdSlot`/`confirmBooking`/`releaseHold` in `functions/booking.js`, concurrency test `npm run test:concurrency`). No other customer screens or callables yet; the starter template components remain unused. Most of the architecture below is design to build toward.
 
 ## Commands
 
@@ -16,6 +16,7 @@ npm --prefix functions run lint   # ESLint (google config); also the firebase pr
 
 npx -y firebase-tools@latest emulators:start   # Auth 9099, Functions 5001, Firestore 8080, Hosting 5002, UI
 npm run seed         # fictional shops/barbers/services + staff logins into the RUNNING emulators (refuses without emulator env vars)
+npm run test:concurrency  # NFR-03/05: needs Auth, Functions and Firestore emulators running (functions loaded)
 npm run test:rules   # Security Rules tests (node --test) against the already-running emulator; uses project id fresher-rules-test, so seeded data is untouched
 ```
 

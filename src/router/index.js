@@ -1,10 +1,20 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { authReady, isOwner, session } from '@/stores/session'
+import { draft } from '@/stores/booking'
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', redirect: '/staff/config' },
+    // Customer booking (FR-02, FR-03). No sign-in needed until the OTP step.
+    { path: '/shops/:shopId', name: 'book', component: () => import('@/views/customer/ShopView.vue') },
+    {
+      path: '/shops/:shopId/verify',
+      name: 'book-verify',
+      component: () => import('@/views/customer/VerifyView.vue'),
+      // The draft is in memory only, so a reload lands back on slot selection.
+      beforeEnter: (to) => (draft.hold && draft.shopId === to.params.shopId ? true : { name: 'book', params: to.params }),
+    },
     { path: '/login', name: 'login', component: () => import('@/views/staff/SignInView.vue') },
     {
       path: '/staff/config',

@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "seed": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 node scripts/seed.mjs",
-    "test:rules": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node --test tests/*.test.mjs"
+    "test:rules": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node --test tests/rules.test.mjs tests/slots.test.mjs",
+    "test:concurrency": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 node --test tests/concurrency.test.mjs"
   },
   "dependencies": {
     "firebase": "^12.19.0",

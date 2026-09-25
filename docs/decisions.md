@@ -25,6 +25,7 @@ Status key: PROPOSED (default in use, needs group approval) · AGREED (confirmed
 - Mobile number changes: not supported in the prototype (a new number is a new customer).
 - Staff: email/password. Google sign-in enabled in Firebase but OPEN whether to offer it in the UI.
 - Barber login: `addBarber` creates it from an owner-set temporary password (min 8 chars). UI-O1 is owner-only.
+- OTP failures are counted in the browser (Firebase Phone Auth); after 3 the client calls `releaseHold(requestId)`. `holdSlot` and `releaseHold` are unauthenticated; `confirmBooking` needs the verified phone.
 - Development: use Firebase test phone numbers; the Auth emulator prints OTP codes in the terminal.
 
 ## A3 Booking rules — PROPOSED
@@ -34,6 +35,7 @@ Status key: PROPOSED (default in use, needs group approval) · AGREED (confirmed
   - `"flag"`: the cancellation proceeds, the appointment gets `lateCancel: true`, and `lateCancels` increments.
 - **Rescheduling:** follows the same notice window as cancellation. Atomic swap; the original stands if the new slot is taken.
 - **Staff cancellations:** always allowed, never late, customer notified.
+- **Booking horizon:** today to +13 days (14 dates), Asia/Singapore.
 - **Slot hold:** 10 minutes (`holdExpiresAt`).
 - **Slot grid:** start times every 15 minutes within working hours. No buffer between bookings by default.
 - **"Any available barber":** among active barbers offering the service who are free for the whole interval, pick the one with the fewest HELD + CONFIRMED + IN_SERVICE + COMPLETED bookings that day; tie-break by lowest `barberId`.
@@ -97,3 +99,5 @@ Status key: PROPOSED (default in use, needs group approval) · AGREED (confirmed
 | 2026-09-25 | A2 | `addBarber` takes an owner-set temporary password (min 8 chars) and creates the barber's email/password login; no email is sent in the prototype | pending |
 | 2026-09-25 | A2 | UI-O1 Shop configuration is owner-only; barbers are shown "not authorised" | pending |
 | 2026-09-25 | architecture | `addBarber` does not write `auditLog`; `auditLog` is for booking state changes only (NFR-08) | pending |
+| 2026-09-25 | A3 | Booking horizon 14 days | pending |
+| 2026-09-25 | A2/architecture | `releaseHold` callable; hold intervals carry no `refId`; `customerId` null while HELD | pending |
