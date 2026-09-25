@@ -5,14 +5,18 @@
 const emulator = () => process.env.FUNCTIONS_EMULATOR === "true";
 const demoMode = () => process.env.DEMO_MODE === "true";
 
-// Callables enforce App Check everywhere except the Functions emulator, which
-// does not attest requests (decisions A17, resolves L1).
-const appCheck = () => ({enforceAppCheck: !emulator()});
+// Callables enforce App Check by default, except in the Functions emulator,
+// which does not attest requests. APP_CHECK_ENFORCE=false (functions/.env.prod)
+// turns enforcement off for a deployment; only that exact value does (A17, L1).
+const appCheckEnforced = () =>
+  !emulator() && process.env.APP_CHECK_ENFORCE !== "false";
+const appCheck = () => ({enforceAppCheck: appCheckEnforced()});
 
 module.exports = {
   emulator,
   demoMode,
   // True where the mock checkout and the postal-code stub may run.
   mocksAllowed: () => emulator() || demoMode(),
+  appCheckEnforced,
   appCheck,
 };

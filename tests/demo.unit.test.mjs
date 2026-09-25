@@ -5,15 +5,19 @@ import { createRequire } from 'node:module'
 
 const demo = createRequire(import.meta.url)('../functions/demo.js')
 
-const saved = { DEMO_MODE: process.env.DEMO_MODE, FUNCTIONS_EMULATOR: process.env.FUNCTIONS_EMULATOR }
+const saved = {
+  DEMO_MODE: process.env.DEMO_MODE,
+  FUNCTIONS_EMULATOR: process.env.FUNCTIONS_EMULATOR,
+  APP_CHECK_ENFORCE: process.env.APP_CHECK_ENFORCE,
+}
 afterEach(() => {
   for (const [k, v] of Object.entries(saved)) {
     if (v === undefined) delete process.env[k]
     else process.env[k] = v
   }
 })
-const setEnv = ({ demoMode, emulator }) => {
-  for (const [k, v] of [['DEMO_MODE', demoMode], ['FUNCTIONS_EMULATOR', emulator]]) {
+const setEnv = ({ demoMode, emulator, enforce }) => {
+  for (const [k, v] of [['DEMO_MODE', demoMode], ['FUNCTIONS_EMULATOR', emulator], ['APP_CHECK_ENFORCE', enforce]]) {
     if (v === undefined) delete process.env[k]
     else process.env[k] = v
   }
@@ -45,5 +49,22 @@ describe('demo mode', () => {
     assert.equal(demo.demoMode(), false)
     assert.equal(demo.mocksAllowed(), true)
     assert.deepEqual(demo.appCheck(), { enforceAppCheck: false })
+  })
+  it('App Check is enforced by default and only APP_CHECK_ENFORCE=false turns it off', () => {
+    for (const v of [undefined, '', 'true', '0', 'FALSE', 'no', ' false']) {
+      setEnv({ enforce: v })
+      assert.equal(demo.appCheckEnforced(), true, JSON.stringify(v))
+      assert.deepEqual(demo.appCheck(), { enforceAppCheck: true })
+    }
+    setEnv({ enforce: 'false' })
+    assert.equal(demo.appCheckEnforced(), false)
+    assert.deepEqual(demo.appCheck(), { enforceAppCheck: false })
+  })
+  it('turning App Check off does not turn demo mode on, or the reverse', () => {
+    setEnv({ enforce: 'false' })
+    assert.equal(demo.demoMode(), false)
+    assert.equal(demo.mocksAllowed(), false)
+    setEnv({ demoMode: 'true' })
+    assert.equal(demo.appCheckEnforced(), true)
   })
 })

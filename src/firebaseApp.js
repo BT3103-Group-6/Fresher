@@ -8,9 +8,10 @@ export const app = initializeApp({
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 })
 
-// A17: production builds attest with App Check (reCAPTCHA Enterprise); every callable enforces it. In dev the
-// emulators are used and need no token. The site key is checked at build time (vite.config.js).
-if (!import.meta.env.DEV) {
+// A17: production builds attest with App Check (reCAPTCHA Enterprise) unless VITE_APP_CHECK_ENABLED=false; the
+// callables enforce it unless APP_CHECK_ENFORCE=false. In dev the emulators are used and need no token. The site
+// key is checked at build time (vite.config.js) only when App Check is enabled.
+if (!import.meta.env.DEV && import.meta.env.VITE_APP_CHECK_ENABLED !== 'false') {
   initializeAppCheck(app, {
     provider: new ReCaptchaEnterpriseProvider(import.meta.env.VITE_APP_CHECK_SITE_KEY),
     isTokenAutoRefreshEnabled: true,
