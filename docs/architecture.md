@@ -56,7 +56,7 @@ Non-functional requirements are met across the system:
 ## Screens (UI IDs)
 - Customer: UI-C1 Discover shops · UI-C2 Select service and slot · UI-C3 Verify and confirm · UI-C4 My bookings · UI-C5 Deposit checkout (ext) · UI-C6 Waitlist offer (ext)
 - Staff: UI-B1 Barber schedule · UI-B2 Queue management (ext) · UI-O1 Shop configuration · UI-O2 Shop dashboard
-- Design direction: clean, Fresha/GlossGenius-inspired. White background, charcoal text, dark teal action colour, labelled status indicators. Mobile-first (NFR-01, NFR-06).
+- Design direction: clean, Fresha/GlossGenius-inspired. Off-white background (`#F6F8F7`), charcoal text (`#1E2B2A`), dark teal action colour (`#1D5E5A`), Manrope type, labelled status indicators; tokens and contrast ratios in `src/assets/design-system.css` (decision A14). Mobile-first (NFR-01, NFR-06).
 
 ## Identity and access
 - **Customers:** Firebase Phone Auth (SMS OTP). Verifying the OTP creates/finds an Auth user whose `uid` keys `customers/{uid}`. No password. Viewing history (FR-11) and changing a booking (FR-04) require a fresh OTP on the booking's mobile number.

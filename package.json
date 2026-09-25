@@ -18,6 +18,7 @@
     "test:concurrency": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 node --test tests/concurrency.test.mjs"
   },
   "dependencies": {
+    "@fontsource-variable/manrope": "^5.3.0",
     "firebase": "^12.19.0",
     "geofire-common": "^6.0.0",
     "vue": "^3.5.42",
