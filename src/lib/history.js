@@ -10,6 +10,16 @@ export function upcomingItems(appointments, now = Date.now()) {
     .sort((a, b) => a.start - b.start || a.id.localeCompare(b.id))
 }
 
+/**
+ * Bookings waiting for a deposit (FR-13): PENDING_PAYMENT with the payment deadline (`holdExpiresAt`, ms) still ahead.
+ * Shown above Upcoming with a link to the checkout; they are not bookings yet. Soonest deadline first.
+ */
+export function pendingPaymentItems(appointments, now = Date.now()) {
+  return appointments
+    .filter((a) => a.status === 'PENDING_PAYMENT' && a.holdExpiresAt != null && a.holdExpiresAt > now)
+    .sort((a, b) => a.holdExpiresAt - b.holdExpiresAt || a.id.localeCompare(b.id))
+}
+
 /** Finished, cancelled or missed bookings, plus CONFIRMED ones that ended without staff finalising them. Newest first. */
 export function historyItems(appointments, now = Date.now()) {
   return appointments

@@ -170,3 +170,5 @@ input[type='date'] { font: inherit; padding: 0.55rem 0.65rem; border: 1px solid 
   .stat-table td { display: flex; justify-content: space-between; gap: 1rem; border: 0; padding: 0.25rem 0; }
   .stat-table td::before { content: attr(data-label); font-weight: 600; }
 }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.timer strong { font-size: 1.4rem; font-variant-numeric: tabular-nums; }

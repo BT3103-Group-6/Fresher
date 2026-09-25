@@ -11,7 +11,7 @@ import { db, functions } from '@/firebase'
 import { isOwner, session } from '@/stores/session'
 import { DAY_MS, formatDate, formatTime, sgDateKey, sgTimeToMs } from '@/lib/slots'
 import {
-  STATUS_LABELS, availableActions, blockTimeToMs, dayBounds, displayStatus, isBooking, overlappingBlocks, partitionDay,
+  STATUS_LABELS, availableActions, blockTimeToMs, dayBounds, displayStatus, isBooking, isHeldStatus, overlappingBlocks, partitionDay,
   reminderSummary, tasksByBooking, timeOptions, toAppointment, toBlock, toReminderTask, validateBlockForm,
 } from '@/lib/schedule'
 
@@ -120,7 +120,7 @@ const timeline = computed(() => [
 ].sort((x, y) => x.start - y.start))
 const counts = computed(() => ({
   bookings: appointments.value.filter((a) => isBooking(a, now.value)).length,
-  holds: parts.value.active.filter((a) => displayStatus(a, now.value) === 'HELD').length,
+  holds: parts.value.active.filter((a) => isHeldStatus(displayStatus(a, now.value))).length,
   blocks: blocks.value.length,
 }))
 const ready = computed(() => loaded.barbers && loaded.appointments && loaded.blocks)
@@ -276,7 +276,7 @@ async function onAction(a, action) {
 
       <ul class="timeline">
         <li v-for="item in timeline" :key="item.key"
-          :class="item.type === 'block' ? 'block' : displayStatus(item.apt, now) === 'HELD' ? 'held' : 'confirmed'">
+          :class="item.type === 'block' ? 'block' : isHeldStatus(displayStatus(item.apt, now)) ? 'held' : 'confirmed'">
           <template v-if="item.type === 'block'">
             <p class="when">{{ range(item.block.start, item.block.end) }} <span class="badge off">Blocked</span></p>
             <p class="meta">{{ item.block.reason || 'Personal time' }}</p>
@@ -298,6 +298,10 @@ async function onAction(a, action) {
             <p class="meta">
               <template v-if="displayStatus(item.apt, now) === 'HELD'">
                 A customer is verifying their number. Not a booking yet; held until {{ formatTime(item.apt.holdExpiresAt) }}.
+              </template>
+              <template v-else-if="displayStatus(item.apt, now) === 'PENDING_PAYMENT'">
+                {{ item.apt.customerName ?? 'A customer' }} · {{ item.apt.customerPhoneMasked }}. Waiting for their deposit: not a booking yet;
+                the slot is held until {{ formatTime(item.apt.holdExpiresAt) }}.
               </template>
               <template v-else>{{ item.apt.customerName ?? 'Customer' }} · {{ item.apt.customerPhoneMasked }}</template>
             </p>
@@ -336,7 +340,7 @@ async function onAction(a, action) {
       </label>
       <ul v-if="showHidden && parts.inactive.length" class="timeline">
         <li v-for="a in parts.inactive" :key="a.id" class="gone">
-          <p class="when">{{ range(a.start, a.end) }} <span class="badge off">{{ displayStatus(a, now) === 'EXPIRED' && a.status === 'HELD' ? 'Hold expired' : STATUS_LABELS[displayStatus(a, now)] }}</span></p>
+          <p class="when">{{ range(a.start, a.end) }} <span class="badge off">{{ displayStatus(a, now) === 'EXPIRED' && a.status === 'HELD' ? 'Hold expired' : displayStatus(a, now) === 'EXPIRED' && a.status === 'PENDING_PAYMENT' ? 'Payment time expired' : STATUS_LABELS[displayStatus(a, now)] }}</span></p>
           <p class="meta hint">{{ a.customerName ? `${a.customerName} · ` : '' }}{{ serviceName(a) }}. Not counted.</p>
         </li>
       </ul>

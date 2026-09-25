@@ -12,6 +12,8 @@ const SG_OFFSET_MS = 8 * 60 * 60 * 1000; // Asia/Singapore has no DST.
 const MINUTE_MS = 60 * 1000;
 const DAY_MS = 24 * 60 * MINUTE_MS;
 const HOLD_MS = 10 * MINUTE_MS;
+const PAYMENT_MS = 10 * MINUTE_MS; // decisions A6: payment deadline.
+const DEPOSIT_AFTER_NO_SHOWS = 2; // decisions A6: no-shows at this shop.
 const FRESH_OTP_MS = 10 * MINUTE_MS; // decisions A3: fresh OTP window.
 const DEFAULT_NOTICE_MINS = 120;
 const GRID_MS = 15 * MINUTE_MS;
@@ -116,6 +118,16 @@ function overlaps(interval, start, end) {
 function liveIntervals(intervals, now) {
   return (intervals || []).filter((i) =>
     !(i.kind === "hold" && i.holdExpiresAt.toMillis() <= now));
+}
+
+/**
+ * decisions A6: 50% of the snapshot price, rounded up to the nearest 10 cents.
+ * Integer maths only.
+ * @param {number} priceCents Snapshot price in cents.
+ * @return {number} Deposit in cents (0 for a price of 0).
+ */
+function depositAmountCents(priceCents) {
+  return Math.ceil(priceCents / 20) * 10;
 }
 
 /**
@@ -310,6 +322,19 @@ async function holdSlot(data) {
 
 /**
  * @param {Object} apt Appointment data.
+ * @return {Object} The booking summary, plus the deposit due while the
+ *   booking waits for payment (decisions A6).
+ */
+function withDeposit(apt) {
+  const out = summary(apt);
+  if (apt.status === "PENDING_PAYMENT") {
+    out.depositCents = depositAmountCents(apt.priceCents);
+  }
+  return out;
+}
+
+/**
+ * @param {Object} apt Appointment data.
  * @param {Object} interval Stored interval.
  * @return {boolean} True if the interval is this appointment's hold.
  */
@@ -352,8 +377,9 @@ async function confirmBooking(request) {
       throw failure("not-found", "HOLD_NOT_FOUND", "Booking not found.");
     }
     const apt = aptSnap.data();
-    if (apt.status === "CONFIRMED" && apt.customerId === uid) {
-      return {summary: summary(apt)}; // idempotent retry.
+    if ((apt.status === "CONFIRMED" || apt.status === "PENDING_PAYMENT") &&
+        apt.customerId === uid) {
+      return {summary: withDeposit(apt)}; // idempotent retry.
     }
     if (apt.status === "EXPIRED") {
       throw failure("failed-precondition", "HOLD_EXPIRED",
@@ -364,7 +390,8 @@ async function confirmBooking(request) {
           "This booking can no longer be confirmed.");
     }
     const schedRef = scheduleRefOf(apt);
-    const schedSnap = await tx.get(schedRef);
+    const statsRef = db.doc(`customers/${uid}/shopStats/${apt.shopId}`);
+    const [schedSnap, statsSnap] = await tx.getAll(schedRef, statsRef);
     const at = Date.now();
     const others = liveIntervals(
         schedSnap.data() && schedSnap.data().intervals, at)
@@ -380,12 +407,45 @@ async function confirmBooking(request) {
       return {expired: true};
     }
 
-    const confirmed = {
-      ...apt,
-      status: "CONFIRMED",
+    const buyer = {
       customerId: uid,
       customerName: displayName,
       customerPhoneMasked: `+65 ${phone[3]}••• ••${phone.slice(-2)}`,
+    };
+    const noShows = (statsSnap.data() && statsSnap.data().noShowCount) || 0;
+    const depositCents = noShows >= DEPOSIT_AFTER_NO_SHOWS ?
+      depositAmountCents(apt.priceCents) : 0;
+    if (depositCents > 0) {
+      // FR-13 (decisions A6): a deposit is due. The slot stays held for the
+      // payment deadline (holdExpiresAt); reminders wait for CONFIRMED.
+      const deadline = Timestamp.fromMillis(at + PAYMENT_MS);
+      const pendingApt = {
+        ...apt, ...buyer, status: "PENDING_PAYMENT", holdExpiresAt: deadline,
+        depositId: requestId,
+      };
+      tx.set(schedRef, {
+        intervals: [...others, {
+          start: apt.start, end: apt.end, kind: "hold",
+          holdExpiresAt: deadline}],
+        version: FieldValue.increment(1),
+      }, {merge: true});
+      tx.set(aptRef, pendingApt);
+      tx.set(db.doc(`customers/${uid}`),
+          {phoneE164: phone, displayName}, {merge: true});
+      tx.set(db.doc(`deposits/${requestId}`), {
+        bookingId: requestId, shopId: apt.shopId, barberId: apt.barberId,
+        customerId: uid, amountCents: depositCents, status: "pending",
+        providerRef: null, createdAt: Timestamp.fromMillis(at),
+      });
+      tx.set(db.doc(`auditLog/${requestId}_PENDING_PAYMENT`), auditRecord(
+          {...audit, action: "requireDeposit", to: "PENDING_PAYMENT"}));
+      return {summary: withDeposit(pendingApt)};
+    }
+
+    const confirmed = {
+      ...apt,
+      ...buyer,
+      status: "CONFIRMED",
       holdExpiresAt: null,
     };
     tx.set(schedRef, {
@@ -409,38 +469,49 @@ async function confirmBooking(request) {
 }
 
 /**
- * Moves a HELD appointment with no customer to EXPIRED, frees its interval
- * and writes the audit record, all inside the caller's transaction. Shared by
- * releaseHold and the scheduled sweep (FR-09). Re-checks the state, so it
- * never overrides a concurrent confirmBooking.
+ * Moves a HELD appointment with no customer (or, with `allowPending`, a
+ * PENDING_PAYMENT one) to EXPIRED, frees its interval and writes the audit
+ * record, all inside the caller's transaction. Shared by releaseHold, the
+ * scheduled sweep (FR-09) and the payment webhook (FR-13). Re-checks the
+ * state, so it never overrides a concurrent confirmation.
  * @param {Transaction} tx Firestore transaction.
  * @param {DocumentReference} aptRef The appointment.
- * @param {Object} rel {actorUid, role, action, now?, onlyExpired?}: onlyExpired
- *   also requires holdExpiresAt <= now (the sweep).
- * @return {Promise<boolean>} True if the hold was released.
+ * @param {Object} rel {actorUid, role, action, now?, onlyExpired?,
+ *   allowPending?, deposit?}: onlyExpired also requires holdExpiresAt <= now
+ *   (the sweep); `deposit` are the fields written to a still-pending deposit
+ *   (default {status: "failed"}).
+ * @return {Promise<boolean>} True if the appointment was released.
  */
 async function releaseInTx(tx, aptRef, rel) {
   const aptSnap = await tx.get(aptRef);
   if (!aptSnap.exists) return false;
   const apt = aptSnap.data();
-  if (apt.status !== "HELD" || apt.customerId !== null) return false;
+  const held = apt.status === "HELD" && apt.customerId === null;
+  const unpaid = rel.allowPending && apt.status === "PENDING_PAYMENT";
+  if (!held && !unpaid) return false;
   const at = rel.now === undefined ? Date.now() : rel.now;
   if (rel.onlyExpired &&
       !(apt.holdExpiresAt && apt.holdExpiresAt.toMillis() <= at)) {
     return false;
   }
+  const db = getFirestore();
   const schedRef = scheduleRefOf(apt);
-  const schedSnap = await tx.get(schedRef);
+  const depRef = unpaid ? db.doc(`deposits/${apt.depositId}`) : null;
+  const [schedSnap, depSnap] =
+    await tx.getAll(...[schedRef, depRef].filter(Boolean));
   const others = liveIntervals(
       schedSnap.data() && schedSnap.data().intervals, at)
       .filter((iv) => !isHoldOf(apt, iv));
   tx.set(schedRef, {intervals: others, version: FieldValue.increment(1)},
       {merge: true});
   tx.update(aptRef, {status: "EXPIRED", holdExpiresAt: null});
-  tx.set(getFirestore().doc(`auditLog/${apt.requestId}_EXPIRED`),
+  if (depSnap && depSnap.exists && depSnap.data().status === "pending") {
+    tx.update(depRef, rel.deposit || {status: "failed"});
+  }
+  tx.set(db.doc(`auditLog/${apt.requestId}_EXPIRED`),
       auditRecord({
         apt, actorUid: rel.actorUid, role: rel.role, action: rel.action,
-        from: "HELD", to: "EXPIRED", now: at}));
+        from: apt.status, to: "EXPIRED", now: at}));
   return true;
 }
 
@@ -542,6 +613,8 @@ async function cancelBooking(request) {
     if (!staff) refs.push(db.doc(`shops/${apt.shopId}`));
     const [schedSnap, shopSnap] = await tx.getAll(...refs);
     const tasks = await notifications.readTasks(tx, db, requestId);
+    const depRef = db.doc(`deposits/${requestId}`);
+    const depSnap = await tx.get(depRef);
     const at = Date.now();
     const start = apt.start.toMillis();
 
@@ -577,6 +650,11 @@ async function cancelBooking(request) {
         {merge: true});
     tx.update(aptRef, {status: "CANCELLED", lateCancel: late});
     notifications.cancelTasks(tx, tasks); // FR-09.
+    if (depSnap.exists && depSnap.data().status === "paid") {
+      // decisions A6: staff or on-time cancel -> refundable; late "flag" ->
+      // forfeited.
+      tx.update(depRef, {status: late ? "forfeited" : "refundable"});
+    }
     if (late) { // "flag" policy: cancellation proceeds and is counted.
       tx.set(db.doc(`customers/${uid}/shopStats/${apt.shopId}`),
           {lateCancels: FieldValue.increment(1)}, {merge: true});
@@ -719,10 +797,11 @@ async function reschedule(request) {
 
 module.exports = {
   holdSlot, confirmBooking, releaseHold, cancelBooking, reschedule,
-  releaseInTx, isLate, requireFreshCustomer,
+  releaseInTx, isHoldOf, scheduleRefOf, depositAmountCents, withDeposit,
+  isLate, requireFreshCustomer,
   // Shared with service.js (FR-12).
   isStaffFor, summary, auditRecord, checkRequestId, MINUTE_MS,
   // Shared with blocks.js (FR-08).
   transact, liveIntervals, overlaps, scheduleId, sgDateKey, failure, invalid,
-  GRID_MS, DAY_MS, HORIZON_DAYS, REQUEST_ID,
+  GRID_MS, DAY_MS, HORIZON_DAYS, REQUEST_ID, PAYMENT_MS,
 };

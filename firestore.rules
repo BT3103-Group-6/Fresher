@@ -113,8 +113,12 @@ service cloud.firestore {
       allow read: if isOwnerOf(resource.data.shopId)
         || isBarberOf(resource.data.shopId, resource.data.barberId);
     }
+    // FR-13: the customer it belongs to, the shop's owner, or the barber the booking belongs to.
+    // Written only by functions.
     match /deposits/{depositId} {
-      allow read: if isStaffOf(resource.data.shopId);
+      allow read: if (signedIn() && resource.data.customerId == request.auth.uid)
+        || isOwnerOf(resource.data.shopId)
+        || isBarberOf(resource.data.shopId, resource.data.barberId);
     }
     match /waitlist/{entryId} {
       allow read: if (signedIn() && resource.data.customerId == request.auth.uid)

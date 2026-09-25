@@ -1,7 +1,9 @@
 // FR-08 / UI-B1: pure day-view logic (no Firebase imports, so node tests can load it).
 import { DAY_MS, formatDate, formatTime, sgDateKey, sgTimeToMs } from './slots.js'
 
-const LIVE = ['PENDING_PAYMENT', 'CONFIRMED', 'IN_SERVICE', 'COMPLETED', 'NO_SHOW']
+const LIVE = ['CONFIRMED', 'IN_SERVICE', 'COMPLETED', 'NO_SHOW']
+// A slot that is held for a customer but is not a booking yet: waiting for the OTP (HELD) or the deposit (PENDING_PAYMENT).
+export const isHeldStatus = (status) => status === 'HELD' || status === 'PENDING_PAYMENT'
 export const STATUS_LABELS = {
   HELD: 'Awaiting customer verification',
   PENDING_PAYMENT: 'Awaiting payment',
@@ -20,22 +22,23 @@ export function dayBounds(dateKey) {
 }
 
 /**
- * The status to show. A HELD appointment whose hold has passed is EXPIRED, whatever the stored status
- * says, because expired holds stay HELD until the cleanup job runs (limitation L2). `holdExpiresAt <= now`
+ * The status to show. A HELD or PENDING_PAYMENT appointment whose hold or payment deadline has passed is EXPIRED,
+ * whatever the stored status says, because they stay as they were until the cleanup job runs (limitation L2). `holdExpiresAt <= now`
  * is expired, matching the server.
  */
 export function displayStatus(apt, now) {
-  if (apt.status === 'HELD' && !(apt.holdExpiresAt > now)) return 'EXPIRED'
+  // A PENDING_PAYMENT appointment past its payment deadline (held in the same field, FR-13) is expired too.
+  if ((apt.status === 'HELD' || apt.status === 'PENDING_PAYMENT') && !(apt.holdExpiresAt > now)) return 'EXPIRED'
   return apt.status
 }
 
 /** True for anything that occupies the barber's time: a live booking or a live hold. */
 export const isActive = (apt, now) => {
   const s = displayStatus(apt, now)
-  return s === 'HELD' || LIVE.includes(s)
+  return isHeldStatus(s) || LIVE.includes(s)
 }
 
-/** True for confirmed-style bookings, not holds (used for the day's booking count). */
+/** True for confirmed-style bookings, not holds or unpaid bookings (used for the day's booking count). */
 export const isBooking = (apt, now) => LIVE.includes(displayStatus(apt, now))
 
 /**

@@ -42,7 +42,7 @@ How each requirement is delivered: the screen it appears on, and the logic behin
 | FR-10 | Queue reconciliation | UI-B2 Queue management | Staff start/finish actions record `actualStart`/`actualEnd`; projected delay is computed from them and queued walk-ins; delay > 10 min triggers a customer warning. |
 | FR-11 | Booking history and rebooking | UI-C4 My bookings | After OTP, Vue queries `appointments` by `customerId` (one query; Upcoming and History are split client-side, decisions A13). Rebook resets the draft with the same shop, barber and service, and UI-C2 drops any part that is no longer active, saying why; then the normal booking flow applies. No new callables. |
 | FR-12 | No-show tracking | UI-B1 Barber schedule | `markNoShow` allowed from start + 15 min; increments `shopStats.noShowCount`. `reverseNoShow` within 24 h decrements it. Both write audit records. |
-| FR-13 | Escalating no-show policy | UI-C5 Deposit checkout | After OTP, if `noShowCount ≥ 2` the booking goes to PENDING_PAYMENT; `createDeposit` calls the mock payment provider; a signed webhook confirms or expires it. |
+| FR-13 | Escalating no-show policy | UI-C5 Deposit checkout | In `confirmBooking`, if the customer's `shopStats.noShowCount ≥ 2` at that shop, the hold becomes PENDING_PAYMENT with a `deposits/{bookingId}` doc (50% of the snapshot price, rounded up to 10 cents) and a 10-minute payment deadline held in `holdExpiresAt`. UI-C5 calls `createDeposit` (registers the payment with the mock provider) and offers mock pay/fail buttons (`mockPay`, exported only in the Functions emulator, callable only by the deposit's customer), which deliver a signed event to the same handler as the HTTPS `paymentWebhook`. Success before the deadline: PENDING_PAYMENT → CONFIRMED and the FR-09 tasks are created. Failure or the deadline (scheduled sweep): EXPIRED and the slot is released. Finish makes the deposit refundable, a further no-show forfeits it (decisions A6 addendum). |
 | FR-14 | Shop analytics | UI-O2 Shop dashboard | `onAppointmentWritten` updates `dailyStats` (idempotent, via `statContrib`); the dashboard reads one doc per day in the chosen range (max 92 days) and computes rates and utilisation. |
 | FR-15 | Waitlist | UI-C6 Waitlist offer | When a slot frees, a trigger offers it to the earliest compatible `waitlist` entry for 15 min; `claimOffer` books it; a scheduled function passes on expired offers and expires entries at end of day. |
 
@@ -100,7 +100,7 @@ Written only by `createBlock`/`removeBlock`. Read by the owner, or by the barber
 `walkInName, serviceId, barberId, joinedAt, startedAt, endedAt`
 
 ### appointments/{bookingId}  (top level; bookingId = client requestId)
-`shopId, barberId, serviceId, customerId (null while HELD; set by `confirmBooking`), customerName, customerPhoneMasked, start, end, status, holdExpiresAt, priceCents, durationMin (snapshots, FR-06), requestId, lateCancel, lateCancelAttempted (set on the first refused late cancel; limits the `lateCancels` increment to once per booking), depositId, actualStart, actualEnd (FR-10, FR-12), noShowAt (FR-12; set by `markNoShow`, cleared by `reverseNoShow`)`
+`shopId, barberId, serviceId, customerId (null while HELD; set by `confirmBooking`, also when it goes to PENDING_PAYMENT), customerName, customerPhoneMasked, start, end, status, holdExpiresAt, priceCents, durationMin (snapshots, FR-06), requestId, lateCancel, lateCancelAttempted (set on the first refused late cancel; limits the `lateCancels` increment to once per booking), depositId, actualStart, actualEnd (FR-10, FR-12), noShowAt (FR-12; set by `markNoShow`, cleared by `reverseNoShow`)`
 `customerName` and `customerPhoneMasked` are copied onto the appointment by `confirmBooking` so staff never need to read `customers/{uid}`. The number is masked only (e.g. `+65 9••• ••12`); the full number is never stored on the appointment.
 
 ### customers/{uid}
@@ -113,11 +113,12 @@ taskId is deterministic (`{bookingId}_{type}`) to prevent duplicates. Written on
 
 ### auditLog/{eventId}
 `bookingId, shopId, actorUid, role, action, fromStatus, toStatus, at, expireAt (= at + 12 months, Firestore TTL policy, NFR-08)`
-`action` says what happened, because some records have the same from and to status: `hold` (none→HELD), `confirm` (HELD→CONFIRMED), `release` (HELD→EXPIRED, by `releaseHold` or lazily when a confirm finds the hold expired), `expire` (HELD→EXPIRED, by the scheduled sweep; role `system`, no actor), `cancel` (CONFIRMED→CANCELLED, by customer or staff), `reschedule` (CONFIRMED→CONFIRMED, the slot moved) `lateCancelRefused` (CONFIRMED→CONFIRMED, a customer cancel refused under the `block` policy), `start` (CONFIRMED→IN_SERVICE), `finish` (IN_SERVICE→COMPLETED), `noShow` (CONFIRMED→NO_SHOW) and `noShowReversed` (NO_SHOW→CONFIRMED). Records for transitions use the deterministic ID `{bookingId}_{TO}`; `reschedule`, `lateCancelRefused`, `noShow` and `noShowReversed` can repeat (or would collide with `confirm`), so they use auto IDs.
+`action` says what happened, because some records have the same from and to status: `hold` (none→HELD), `confirm` (HELD→CONFIRMED), `release` (HELD→EXPIRED, by `releaseHold` or lazily when a confirm finds the hold expired), `expire` (HELD or PENDING_PAYMENT→EXPIRED, by the scheduled sweep; role `system`, no actor), `paymentFailed` (PENDING_PAYMENT→EXPIRED on a failed payment; role `system`), a webhook `confirm` (PENDING_PAYMENT→CONFIRMED; role `system`, no actor), `cancel` (CONFIRMED→CANCELLED, by customer or staff), `reschedule` (CONFIRMED→CONFIRMED, the slot moved) `lateCancelRefused` (CONFIRMED→CONFIRMED, a customer cancel refused under the `block` policy), `start` (CONFIRMED→IN_SERVICE), `finish` (IN_SERVICE→COMPLETED), `noShow` (CONFIRMED→NO_SHOW) and `noShowReversed` (NO_SHOW→CONFIRMED). Records for transitions use the deterministic ID `{bookingId}_{TO}`; `reschedule`, `lateCancelRefused`, `noShow` and `noShowReversed` can repeat (or would collide with `confirm`), so they use auto IDs.
 No client can write or update. Written only inside the same transaction as the state change (a refused late attempt is written in its own transaction, together with the once-per-booking `lateCancels` increment, and the error is returned after it commits).
 
 ### deposits/{depositId}  (extension, FR-13)
-`bookingId, shopId (for staff-scoped rules), amountCents, status ("pending" | "paid" | "refundable" | "forfeited" | "failed"), providerRef`
+`bookingId (= the doc ID), shopId, barberId, customerId (for scoped rules), amountCents, status ("pending" | "paid" | "refundable" | "forfeited" | "failed"), providerRef, createdAt, paidAt?, paidAfterExpiry?`
+Written only by functions. Read by the customer it belongs to, the shop's owner, and the barber whose `barberId` matches. Lifecycle: `pending → paid → refundable` (attended) or `forfeited` (no-show; reversal restores `paid`), or `pending → failed`; a payment arriving after the booking expired ends `refundable` with `paidAfterExpiry`. The appointment stores `depositId`. While PENDING_PAYMENT, the appointment's `holdExpiresAt` is the payment deadline.
 
 ### waitlist/{entryId}  (extension, FR-15)
 `shopId, serviceId, barberId?, date, customerId, joinedAt, status ("waiting" | "offered" | "claimed" | "expired"), offerSlot, offerExpiresAt`
@@ -130,10 +131,10 @@ Terminal: `COMPLETED, CANCELLED, EXPIRED`. `NO_SHOW` can be reversed to `CONFIRM
 | From | To | Actor | Guard |
 |---|---|---|---|
 | (none) | HELD | Customer: `holdSlot` | Interval free |
-| HELD | CONFIRMED | System after OTP | OTP verified before `holdExpiresAt`, no deposit due |
-| HELD | PENDING_PAYMENT | System after OTP | Deposit due (FR-13) |
-| PENDING_PAYMENT | CONFIRMED | Payment provider (signed webhook) | Payment success |
-| HELD / PENDING_PAYMENT | EXPIRED | Scheduler | 10 min elapsed, 3 failed OTPs, or payment failed |
+| HELD | CONFIRMED | System after OTP | OTP verified before `holdExpiresAt`, no deposit due (`noShowCount < 2` at this shop) |
+| HELD | PENDING_PAYMENT | System after OTP | Deposit due (`noShowCount ≥ 2` at this shop); deadline = now + 10 min |
+| PENDING_PAYMENT | CONFIRMED | Payment provider (signed `paymentWebhook`) | Valid signature, `payment.succeeded`, now < `holdExpiresAt`; idempotent; creates FR-09 tasks |
+| HELD / PENDING_PAYMENT | EXPIRED | Scheduler or webhook | `holdExpiresAt` passed (sweep; the deposit becomes `failed`), 3 failed OTPs (HELD), or `payment.failed` (webhook) |
 | CONFIRMED | CONFIRMED | Customer: `reschedule` (OTP) | New interval free; atomic swap |
 | CONFIRMED | CANCELLED | Customer (OTP) or staff | Notice rule (decisions A3); late → block or flag |
 | CONFIRMED | IN_SERVICE | Staff: `startService` | now ≥ start − 60 min; sets `actualStart` |
@@ -142,7 +143,7 @@ Terminal: `COMPLETED, CANCELLED, EXPIRED`. `NO_SHOW` can be reversed to `CONFIRM
 | NO_SHOW | CONFIRMED | Staff: `reverseNoShow` | within 24 h of `noShowAt`; decrements `noShowCount` |
 
 ## Callable functions (all in asia-southeast1)
-`geocode, holdSlot, confirmBooking, releaseHold, cancelBooking, reschedule, markNoShow, reverseNoShow, startService, finishService, createBlock, addBarber (sets claims), createDeposit, paymentWebhook, joinWaitlist, claimOffer, verifyShop (admin)`
+`geocode, holdSlot, confirmBooking, releaseHold, cancelBooking, reschedule, markNoShow, reverseNoShow, startService, finishService, createBlock, addBarber (sets claims), createDeposit, mockPay (mock checkout; emulator only, deposit owner only), paymentWebhook (HTTPS, signed, not a callable), joinWaitlist, claimOffer, verifyShop (admin)`
 
 Every state-changing function: check auth and role → load current state in a transaction → check the transition and guard from the table above → write new state **and** an `auditLog` record in the same transaction.
 

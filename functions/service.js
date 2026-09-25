@@ -57,7 +57,8 @@ function detail(apt) {
  * and returns an empty object for an idempotent replay or the change.
  * @param {Object} request The callable request (auth, data).
  * @param {Function} step (apt, at) => {} for a replay, or {change: {from,
- *   to, action, update, auditId (omit for an auto ID), stat (+1 or -1)}}.
+ *   to, action, update, auditId (omit for an auto ID), stat (+1 or -1),
+ *   deposit ({from, to} status move for the FR-13 deposit)}}.
  * @return {Promise<Object>} Appointment detail.
  */
 async function transition(request, step) {
@@ -92,7 +93,16 @@ async function transition(request, step) {
       const stats = (await tx.get(statsRef)).data();
       count = (stats && stats.noShowCount) || 0;
     }
+    let depRef = null;
+    let deposit = null;
+    if (change.deposit && apt.depositId) { // FR-13; read before any write.
+      depRef = db.doc(`deposits/${apt.depositId}`);
+      deposit = (await tx.get(depRef)).data();
+    }
     tx.update(aptRef, change.update);
+    if (deposit && deposit.status === change.deposit.from) {
+      tx.update(depRef, {status: change.deposit.to});
+    }
     if (statsRef) {
       tx.set(statsRef, {noShowCount: Math.max(0, count + change.stat)},
           {merge: true});
@@ -166,6 +176,7 @@ function finishService(request) {
       from: "IN_SERVICE", to: "COMPLETED", action: "finish",
       auditId: "COMPLETED", update: {
         status: "COMPLETED", actualEnd: Timestamp.fromMillis(at)},
+      deposit: {from: "paid", to: "refundable"}, // decisions A6: attended.
     }};
   });
 }
@@ -189,6 +200,7 @@ function markNoShow(request) {
     return {change: {
       from: "CONFIRMED", to: "NO_SHOW", action: "noShow", stat: 1,
       update: {status: "NO_SHOW", noShowAt: Timestamp.fromMillis(at)},
+      deposit: {from: "paid", to: "forfeited"}, // decisions A6.
     }};
   });
 }
@@ -210,6 +222,7 @@ function reverseNoShow(request) {
     return {change: {
       from: "NO_SHOW", to: "CONFIRMED", action: "noShowReversed", stat: -1,
       update: {status: "CONFIRMED", noShowAt: FieldValue.delete()},
+      deposit: {from: "forfeited", to: "paid"},
     }};
   });
 }

@@ -11,7 +11,8 @@ import { useRouter } from 'vue-router'
 import { db, functions } from '@/firebase'
 import { dateOptions, formatDate, formatTime, freeSlots, sgDateKey, toIntervals, weekdayOf } from '@/lib/slots'
 import { normalizeSgMobile, otpErrorMessage, sendOtp, verifyOtp } from '@/lib/customerAuth'
-import { historyItems, historyLabel, resolveRebook, upcomingItems } from '@/lib/history'
+import { historyItems, historyLabel, pendingPaymentItems, resolveRebook, upcomingItems } from '@/lib/history'
+import { countdown, depositAmountCents, money as depositMoney } from '@/lib/deposit'
 import { draft, resetDraft } from '@/stores/booking'
 
 const cancelBooking = httpsCallable(functions, 'cancelBooking')
@@ -34,6 +35,7 @@ const tab = ref('upcoming') // upcoming | history
 const allAppointments = ref([])
 const historyShown = ref(HISTORY_PAGE)
 const bookings = computed(() => upcomingItems(allAppointments.value, now.value))
+const awaiting = computed(() => pendingPaymentItems(allAppointments.value, now.value)) // FR-13: deposit due
 const historyAll = computed(() => historyItems(allAppointments.value, now.value))
 const history = computed(() => historyAll.value.slice(0, historyShown.value))
 const meta = reactive({}) // shopId -> { shop, services, barbers }
@@ -105,7 +107,8 @@ async function loadMeta(shopId, items) {
 
 // Upcoming always; History items only once that tab is opened, and only the ones shown (NFR-07).
 async function refreshMeta() {
-  const items = tab.value === 'history' ? [...bookings.value, ...history.value] : bookings.value
+  const upcoming = [...awaiting.value, ...bookings.value]
+  const items = tab.value === 'history' ? [...upcoming, ...history.value] : upcoming
   try {
     await Promise.all([...new Set(items.map((b) => b.shopId))].map((id) => loadMeta(id, items)))
   } catch {
@@ -120,7 +123,10 @@ function listen() {
   // Filtered by customerId only (no composite index); status and time are split into tabs in src/lib/history.js.
   unsubList = onSnapshot(query(collection(db, 'appointments'), where('customerId', '==', uid.value)), async (snap) => {
     allAppointments.value = snap.docs
-      .map((d) => ({ ...d.data(), id: d.id, start: d.data().start.toMillis(), end: d.data().end.toMillis() }))
+      .map((d) => ({
+        ...d.data(), id: d.id, start: d.data().start.toMillis(), end: d.data().end.toMillis(),
+        holdExpiresAt: d.data().holdExpiresAt?.toMillis() ?? null, // the payment deadline while PENDING_PAYMENT
+      }))
     await refreshMeta()
     loadingList.value = false
   }, () => {
@@ -358,7 +364,7 @@ async function onMove(b) {
 
       <div id="panel-bookings" role="tabpanel" :aria-labelledby="`tab-${tab}`">
       <p v-if="loadingList" class="hint">Loading your bookings…</p>
-      <p v-else-if="tab === 'upcoming' && !bookings.length">You have no upcoming bookings.</p>
+      <p v-else-if="tab === 'upcoming' && !bookings.length && !awaiting.length">You have no upcoming bookings.</p>
       <p v-else-if="tab === 'history' && !history.length">You have no past bookings yet.</p>
 
       <template v-if="tab === 'history'">
@@ -386,6 +392,19 @@ async function onMove(b) {
       </template>
 
       <template v-else>
+      <section v-for="b in awaiting" :key="`pay-${b.id}`" class="card" :aria-labelledby="`ph-${b.id}`">
+        <h2 :id="`ph-${b.id}`">{{ shopOf(b)?.name ?? 'Your booking' }}</h2>
+        <p class="badge warn" role="status">Status: Awaiting payment</p>
+        <dl class="summary">
+          <dt>Service</dt><dd>{{ serviceOf(b)?.name ?? 'Service' }} · {{ b.durationMin }} min</dd>
+          <dt>When</dt><dd>{{ formatDate(b.start) }}, {{ formatTime(b.start) }}</dd>
+          <dt>Deposit due</dt><dd>{{ depositMoney(depositAmountCents(b.priceCents)) }} · about {{ countdown(b.holdExpiresAt, now).text }} left</dd>
+        </dl>
+        <p class="hint">Not a booking yet: the slot is held until you pay.</p>
+        <div class="row-actions">
+          <router-link class="btn" :to="{ name: 'deposit', params: { requestId: b.id } }">Continue to payment</router-link>
+        </div>
+      </section>
       <section v-for="b in bookings" :key="b.id" class="card" :aria-labelledby="`h-${b.id}`">
         <h2 :id="`h-${b.id}`">{{ shopOf(b)?.name ?? 'Your booking' }}</h2>
         <p class="badge" role="status">Status: Confirmed</p>

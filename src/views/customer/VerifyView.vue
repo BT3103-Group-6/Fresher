@@ -146,6 +146,9 @@ async function onConfirm() {
     }
     const { data } = await confirmBooking({ requestId: hold.requestId, displayName: draft.name.trim() })
     confirmed.value = data
+    if (data.status === 'PENDING_PAYMENT') { // FR-13: a deposit is due; UI-C5 takes over
+      return await router.replace({ name: 'deposit', params: { requestId: data.requestId } })
+    }
     step.value = 'done'
   } catch (err) {
     const reason = err.details?.reason

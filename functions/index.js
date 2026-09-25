@@ -196,3 +196,30 @@ if (process.env.FUNCTIONS_EMULATOR === "true") {
     res.json(await sweep.runAll(getFirestore(), messaging.mockProvider()));
   });
 }
+
+// FR-13: deposits (decisions A6 addendum). createDeposit registers the payment
+// with the mock provider; paymentWebhook applies the provider's signed events
+// (HTTPS, not a callable: the provider signs the raw body). The secret falls
+// back to a fixed mock value in the Functions emulator only (L24).
+const payments = require("./payments");
+const paymentSecret = defineSecret("PAYMENT_WEBHOOK_SECRET");
+exports.createDeposit = onCall((request) =>
+  payments.createDeposit(request, getFirestore(), payments.mockProvider()));
+exports.paymentWebhook = onRequest({secrets: [paymentSecret]},
+    async (req, res) => {
+      const out = await payments.handleWebhook(getFirestore(), {
+        method: req.method,
+        rawBody: req.rawBody,
+        signature: req.get("x-signature"),
+      }, payments.resolveSecret(paymentSecret.value()));
+      res.status(out.status).json(out.body);
+    });
+
+// Dev only, like devRunSweep: the mock checkout's pay and fail buttons. Not
+// exported outside the Functions emulator, so a deployment has no way to
+// complete a mock payment (L23). The caller must own the deposit.
+if (process.env.FUNCTIONS_EMULATOR === "true") {
+  exports.mockPay = onCall({secrets: [paymentSecret]}, (request) =>
+    payments.mockPay(request, getFirestore(), payments.mockProvider(),
+        payments.resolveSecret(paymentSecret.value())));
+}

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { historyItems, historyLabel, resolveRebook, upcomingItems } from '../src/lib/history.js'
+import { historyItems, historyLabel, pendingPaymentItems, resolveRebook, upcomingItems } from '../src/lib/history.js'
 
 const NOW = Date.UTC(2030, 0, 7, 4, 0)
 const H = 3600e3
@@ -103,5 +103,23 @@ describe('resolveRebook', () => {
   })
   it('names the service in the note when it is still known but inactive', () => {
     assert.match(resolveRebook({ ...base, service: { ...service, active: false } }).notes[0], /^Haircut is no longer offered/)
+  })
+})
+
+describe('pendingPaymentItems (FR-13)', () => {
+  const pay = (id, deadlineMin, status = 'PENDING_PAYMENT') => ({ ...apt(id, status, 30), holdExpiresAt: NOW + deadlineMin * 60e3 })
+
+  it('lists PENDING_PAYMENT bookings whose deadline is still ahead, soonest deadline first', () => {
+    const list = [pay('later', 8), pay('soon', 2), pay('expired', -1), pay('atDeadline', 0)]
+    assert.deepEqual(pendingPaymentItems(list, NOW).map((a) => a.id), ['soon', 'later'])
+  })
+  it('ignores other statuses and a missing deadline', () => {
+    const list = [pay('held', 5, 'HELD'), pay('confirmed', 5, 'CONFIRMED'), { ...apt('nodeadline', 'PENDING_PAYMENT', 30) }, pay('ok', 5)]
+    assert.deepEqual(pendingPaymentItems(list, NOW).map((a) => a.id), ['ok'])
+  })
+  it('never appears in Upcoming or History (it is not a booking yet)', () => {
+    const list = [pay('p', 5)]
+    assert.deepEqual(upcomingItems(list, NOW), [])
+    assert.deepEqual(historyItems(list, NOW), [])
   })
 })

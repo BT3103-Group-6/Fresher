@@ -46,6 +46,8 @@ beforeEach(async () => {
     await setDoc(doc(db, 'shops/b/blocks/k3'), { barberId: 'b1', start: DAY_START, end: DAY_END })
     await setDoc(doc(db, 'auditLog/e1'), { shopId: 'a', bookingId: 'apt1' })
     await setDoc(doc(db, 'notifications/n1'), { shopId: 'a', barberId: 'b1', bookingId: 'apt1' })
+    await setDoc(doc(db, 'deposits/d1'), { shopId: 'a', barberId: 'b1', customerId: 'cust1', bookingId: 'apt1', amountCents: 1250, status: 'pending' })
+    await setDoc(doc(db, 'deposits/d2'), { shopId: 'a', barberId: 'b2', customerId: 'cust2', bookingId: 'apt2', amountCents: 1250, status: 'paid' })
     await setDoc(doc(db, 'notifications/n2'), { shopId: 'a', barberId: 'b2', bookingId: 'apt2' })
     await setDoc(doc(db, 'customers/cust1'), { phoneE164: '+6591234567' })
   })
@@ -171,6 +173,27 @@ describe('NFR-04 isolation', () => {
     await assertSucceeds(getDoc(doc(barber('a'), 'notifications/n1')))
     await assertFails(getDoc(doc(customer('cust1'), 'notifications/n1')))
   })
+  it('lets a customer read only their own deposit (FR-13)', async () => {
+    await assertSucceeds(getDoc(doc(customer('cust1'), 'deposits/d1')))
+    await assertFails(getDoc(doc(customer('cust1'), 'deposits/d2')))
+    await assertFails(getDoc(doc(customer('cust3'), 'deposits/d1')))
+    await assertFails(getDoc(doc(anon(), 'deposits/d1')))
+  })
+  it('lets the shop owner, and only the matching barber, read deposits (FR-13)', async () => {
+    await assertSucceeds(getDoc(doc(owner('a'), 'deposits/d1')))
+    await assertSucceeds(getDoc(doc(owner('a'), 'deposits/d2')))
+    await assertFails(getDoc(doc(owner('b'), 'deposits/d1')))
+    await assertSucceeds(getDoc(doc(barber('a', 'b1'), 'deposits/d1')))
+    await assertFails(getDoc(doc(barber('a', 'b1'), 'deposits/d2')))
+    await assertFails(getDoc(doc(barber('b', 'b1'), 'deposits/d1')))
+    await assertFails(getDoc(doc(admin(), 'deposits/d1')))
+  })
+  it('supports listing own deposits by customerId, and a barber\'s by shop and barber (FR-13)', async () => {
+    await assertSucceeds(getDocs(query(collection(customer('cust1'), 'deposits'), where('customerId', '==', 'cust1'))))
+    await assertFails(getDocs(collection(customer('cust1'), 'deposits')))
+    await assertSucceeds(getDocs(query(collection(barber('a', 'b1'), 'deposits'), where('shopId', '==', 'a'), where('barberId', '==', 'b1'))))
+    await assertFails(getDocs(query(collection(barber('a', 'b1'), 'deposits'), where('shopId', '==', 'a'))))
+  })
   it('lets a barber read only reminder tasks for their own bookings (FR-09)', async () => {
     await assertFails(getDoc(doc(barber('a'), 'notifications/n2')))
     await assertSucceeds(getDocs(query(collection(barber('a'), 'notifications'), where('shopId', '==', 'a'), where('barberId', '==', 'b1'))))
@@ -210,6 +233,12 @@ describe('no client writes to server-owned data', () => {
       }
     })
   }
+  it('denies updating and deleting deposits, including the customer marking their own as paid (FR-13)', async () => {
+    for (const db of [customer('cust1'), owner('a'), barber('a', 'b1'), admin()]) {
+      await assertFails(updateDoc(doc(db, 'deposits/d1'), { status: 'paid' }))
+      await assertFails(deleteDoc(doc(db, 'deposits/d1')))
+    }
+  })
   it('denies updating and deleting existing appointments', async () => {
     await assertFails(updateDoc(doc(owner('a'), 'appointments/apt1'), { status: 'CANCELLED' }))
     await assertFails(deleteDoc(doc(customer('cust1'), 'appointments/apt1')))

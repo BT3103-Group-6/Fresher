@@ -130,22 +130,23 @@ async function sendDueTasks(db, provider, now) {
 }
 
 /**
- * Moves expired HELD appointments to EXPIRED (resolves L2). Each one is its
- * own transaction that re-checks the state, so a hold confirmed in the
- * meantime is left alone.
+ * Moves expired HELD and PENDING_PAYMENT appointments to EXPIRED (resolves
+ * L2; FR-13 releases the slot and fails the deposit). Each one is its own
+ * transaction that re-checks the state, so a booking confirmed or paid in
+ * the meantime is left alone.
  * @param {Object} db Firestore instance.
  * @param {number} now Current time (ms).
  * @return {Promise<Object>} {found, expired}.
  */
 async function sweepExpiredHolds(db, now) {
   const snap = await db.collection("appointments")
-      .where("status", "==", "HELD")
+      .where("status", "in", ["HELD", "PENDING_PAYMENT"])
       .where("holdExpiresAt", "<=", ts(now)).limit(BATCH).get();
   let expired = 0;
   for (const doc of snap.docs) {
     const done = await transact((tx) => releaseInTx(tx, doc.ref, {
       actorUid: null, role: "system", action: "expire", now,
-      onlyExpired: true}));
+      onlyExpired: true, allowPending: true}));
     if (done) expired++;
   }
   return {found: snap.size, expired};

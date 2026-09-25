@@ -2,7 +2,7 @@
 // flags and the block form's validation. No emulator needed.
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { MAX_REMINDER_ATTEMPTS, availableActions, reminderSummary, tasksByBooking, toReminderTask, blockTimeToMs, dayBounds, displayStatus, isActive, isBooking, overlappingBlocks, partitionDay, timeOptions, toAppointment, validateBlockForm } from '../src/lib/schedule.js'
+import { MAX_REMINDER_ATTEMPTS, availableActions, isHeldStatus, reminderSummary, tasksByBooking, toReminderTask, blockTimeToMs, dayBounds, displayStatus, isActive, isBooking, overlappingBlocks, partitionDay, timeOptions, toAppointment, validateBlockForm } from '../src/lib/schedule.js'
 import { sgTimeToMs } from '../src/lib/slots.js'
 
 const KEY = '20300107'
@@ -226,5 +226,32 @@ describe('reminderSummary (FR-09: reminder status per booking on UI-B1)', () => 
     })
     assert.deepEqual(t.attempts, [{ at: 4, outcome: 'failed', error: 'E' }])
     assert.deepEqual(Object.keys(tasksByBooking([t, { ...t, bookingId: 'y' }])).sort(), ['x', 'y'])
+  })
+})
+
+describe('PENDING_PAYMENT on UI-B1 (FR-13): held for a deposit, never a booking', () => {
+  const unpaid = (deadline, extra = {}) => apt('a', 'PENDING_PAYMENT', '15:00', '15:30', { holdExpiresAt: deadline, ...extra })
+
+  it('is shown as awaiting payment until its deadline, then as expired (like an expired hold)', () => {
+    assert.equal(displayStatus(unpaid(NOW + 1), NOW), 'PENDING_PAYMENT')
+    assert.equal(displayStatus(unpaid(NOW), NOW), 'EXPIRED')
+    assert.equal(displayStatus(unpaid(NOW - 60e3), NOW), 'EXPIRED')
+    assert.equal(displayStatus(unpaid(null), NOW), 'EXPIRED')
+  })
+  it('occupies the barber\'s time while it is live but is not counted as a booking', () => {
+    assert.equal(isActive(unpaid(NOW + 60e3), NOW), true)
+    assert.equal(isBooking(unpaid(NOW + 60e3), NOW), false)
+    assert.equal(isActive(unpaid(NOW - 1), NOW), false)
+  })
+  it('lands on the timeline when live and in the hidden list once expired', () => {
+    const list = [unpaid(NOW + 60e3, { id: 'live' }), unpaid(NOW - 1, { id: 'gone' })]
+    const { active, inactive } = partitionDay(list, NOW)
+    assert.deepEqual([active.map((x) => x.id), inactive.map((x) => x.id)], [['live'], ['gone']])
+  })
+  it('offers no staff actions while waiting for payment', () => {
+    assert.deepEqual(availableActions(unpaid(NOW + 60e3), NOW), [])
+  })
+  it('isHeldStatus covers a hold waiting for the OTP and one waiting for the deposit only', () => {
+    assert.deepEqual(['HELD', 'PENDING_PAYMENT', 'CONFIRMED', 'EXPIRED'].map(isHeldStatus), [true, true, false, false])
   })
 })
