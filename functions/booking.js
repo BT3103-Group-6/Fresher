@@ -695,6 +695,8 @@ async function reschedule(request) {
 module.exports = {
   holdSlot, confirmBooking, releaseHold, cancelBooking, reschedule,
   isLate, requireFreshCustomer,
+  // Shared with service.js (FR-12).
+  isStaffFor, summary, auditRecord, checkRequestId, MINUTE_MS,
   // Shared with blocks.js (FR-08).
   transact, liveIntervals, overlaps, scheduleId, sgDateKey, failure, invalid,
   GRID_MS, DAY_MS, HORIZON_DAYS, REQUEST_ID,

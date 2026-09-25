@@ -10,7 +10,7 @@ import { db, functions } from '@/firebase'
 import { isOwner, session } from '@/stores/session'
 import { DAY_MS, formatDate, formatTime, sgDateKey, sgTimeToMs } from '@/lib/slots'
 import {
-  STATUS_LABELS, blockTimeToMs, dayBounds, displayStatus, isBooking, overlappingBlocks, partitionDay,
+  STATUS_LABELS, availableActions, blockTimeToMs, dayBounds, displayStatus, isBooking, overlappingBlocks, partitionDay,
   timeOptions, toAppointment, toBlock, validateBlockForm,
 } from '@/lib/schedule'
 
@@ -18,6 +18,12 @@ const shopId = session.claims.shopId
 const ownerMode = isOwner()
 const createBlock = httpsCallable(functions, 'createBlock')
 const removeBlock = httpsCallable(functions, 'removeBlock')
+const serviceCallables = {
+  start: httpsCallable(functions, 'startService'),
+  finish: httpsCallable(functions, 'finishService'),
+  noShow: httpsCallable(functions, 'markNoShow'),
+  reverse: httpsCallable(functions, 'reverseNoShow'),
+}
 
 const barbers = ref([]) // owners only
 const barberId = ref(ownerMode ? '' : session.claims.barberId)
@@ -178,6 +184,37 @@ async function onRemove(id) {
     removing.value = ''
   }
 }
+
+// ---- Start, finish and no-show (FR-12) ----
+const CONFIRM_FIRST = ['noShow', 'reverse'] // customer-affecting, so a second click confirms
+const actionMessages = {
+  TOO_EARLY: 'It is too early for that.',
+  REVERSAL_WINDOW_CLOSED: 'A no-show can only be reversed within 24 hours of marking it.',
+  INVALID_STATE: 'This appointment has changed. The list has been updated.',
+  BOOKING_NOT_FOUND: 'You cannot change this appointment.',
+}
+const acting = ref('') // `${id}:${action}` while a call is in flight
+const armed = ref('') // `${id}:${action}` awaiting confirmation
+const actionErrors = ref({}) // appointment id -> message
+const key = (a, action) => `${a.id}:${action}`
+async function onAction(a, action) {
+  if (CONFIRM_FIRST.includes(action) && armed.value !== key(a, action)) { armed.value = key(a, action); return }
+  actionErrors.value = { ...actionErrors.value, [a.id]: '' }
+  acting.value = key(a, action)
+  try {
+    await serviceCallables[action]({ requestId: a.id })
+    armed.value = ''
+  } catch (err) {
+    const reason = err.details?.reason
+    const msg = err.code === 'functions/permission-denied'
+      ? 'You cannot change this appointment.'
+      : actionMessages[reason] ?? 'Could not save. Check your connection and try again.'
+    actionErrors.value = { ...actionErrors.value, [a.id]: msg }
+    armed.value = ''
+  } finally {
+    acting.value = ''
+  }
+}
 </script>
 
 <template>
@@ -245,6 +282,22 @@ async function onRemove(id) {
               <template v-else>{{ item.apt.customerName ?? 'Customer' }} · {{ item.apt.customerPhoneMasked }}</template>
             </p>
             <p class="meta hint">{{ serviceName(item.apt) }} · {{ item.apt.durationMin }} min · {{ money(item.apt.priceCents) }}</p>
+            <div v-if="availableActions(item.apt, now).length" class="row-actions">
+              <template v-for="act in availableActions(item.apt, now)" :key="act.action">
+                <template v-if="armed === key(item.apt, act.action)">
+                  <button class="btn" type="button" :disabled="acting === key(item.apt, act.action) || !online" @click="onAction(item.apt, act.action)">
+                    {{ acting === key(item.apt, act.action) ? 'Saving…' : act.action === 'noShow' ? 'Confirm no-show' : 'Confirm reversal' }}
+                  </button>
+                  <button class="btn secondary" type="button" @click="armed = ''">Cancel</button>
+                </template>
+                <button v-else class="btn secondary" type="button" :disabled="!act.enabled || !!acting || !online"
+                  :aria-describedby="act.enabled ? undefined : `hint-${item.apt.id}-${act.action}`" @click="onAction(item.apt, act.action)">
+                  {{ acting === key(item.apt, act.action) ? 'Saving…' : act.label }}
+                </button>
+                <span v-if="!act.enabled" :id="`hint-${item.apt.id}-${act.action}`" class="hint">Available from {{ formatTime(act.availableAt) }}</span>
+              </template>
+            </div>
+            <p v-if="actionErrors[item.apt.id]" class="meta" role="alert"><span class="badge warn">Not saved</span> {{ actionErrors[item.apt.id] }}</p>
             <p v-for="b in flagged(item.apt)" :key="b.id" class="meta"><span class="badge warn">Overlaps a personal block</span> {{ b.reason || 'Personal time' }}, {{ range(b.start, b.end) }}</p>
           </template>
         </li>

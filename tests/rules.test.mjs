@@ -230,6 +230,45 @@ describe('FR-04/05 cancellation and rescheduling data', () => {
   })
 })
 
+describe('FR-12 no-show data', () => {
+  beforeEach(() => env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'customers/cust1/shopStats/a'), { noShowCount: 1 })
+    await setDoc(doc(ctx.firestore(), 'auditLog/ns1'), { shopId: 'a', bookingId: 'apt1', action: 'noShow' })
+    await setDoc(doc(ctx.firestore(), 'auditLog/ns2'), { shopId: 'a', bookingId: 'apt1', action: 'noShowReversed' })
+  }))
+  it('no client can start, finish, mark or reverse: status and FR-12 fields are server-only', async () => {
+    const fields = [{ status: 'IN_SERVICE', actualStart: new Date() }, { status: 'COMPLETED', actualEnd: new Date() },
+      { status: 'NO_SHOW', noShowAt: new Date() }, { status: 'CONFIRMED', noShowAt: null }]
+    for (const db of [owner('a'), barber('a', 'b1'), owner('b'), customer('cust1'), anon()]) {
+      for (const f of fields) await assertFails(updateDoc(doc(db, 'appointments/apt1'), f))
+    }
+  })
+  it('a customer can read but not change their own noShowCount; staff cannot read or write it', async () => {
+    const path = 'customers/cust1/shopStats/a'
+    const stat = (await assertSucceeds(getDoc(doc(customer('cust1'), path)))).data()
+    assert.equal(stat.noShowCount, 1)
+    await assertFails(updateDoc(doc(customer('cust1'), path), { noShowCount: 0 }))
+    await assertFails(setDoc(doc(customer('cust1'), path), { noShowCount: 0 }))
+    for (const db of [owner('a'), barber('a', 'b1')]) {
+      await assertFails(getDoc(doc(db, path)))
+      await assertFails(updateDoc(doc(db, path), { noShowCount: 0 }))
+      await assertFails(setDoc(doc(db, 'customers/cust2/shopStats/a'), { noShowCount: 5 }))
+    }
+    await assertFails(getDoc(doc(customer('cust2'), path)))
+  })
+  it('no-show audit records are readable by their own shop only and never writable', async () => {
+    for (const id of ['ns1', 'ns2']) {
+      await assertSucceeds(getDoc(doc(owner('a'), `auditLog/${id}`)))
+      await assertSucceeds(getDoc(doc(barber('a', 'b1'), `auditLog/${id}`)))
+      await assertFails(getDoc(doc(owner('b'), `auditLog/${id}`)))
+      await assertFails(getDoc(doc(customer('cust1'), `auditLog/${id}`)))
+      await assertFails(updateDoc(doc(owner('a'), `auditLog/${id}`), { action: 'cancel' }))
+      await assertFails(deleteDoc(doc(owner('a'), `auditLog/${id}`)))
+    }
+    await assertFails(setDoc(doc(owner('a'), 'auditLog/ns3'), { shopId: 'a', action: 'noShow' }))
+  })
+})
+
 describe('shop configuration writes', () => {
   it('owner writes valid services in own shop only', async () => {
     await assertSucceeds(setDoc(doc(owner('a'), 'shops/a/services/s2'), service))

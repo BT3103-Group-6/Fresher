@@ -55,6 +55,13 @@ Status key: PROPOSED (default in use, needs group approval) · AGREED (confirmed
 - Mark allowed only when `now >= start + 15 min`.
 - Reversal: within 24 h of marking, by the same roles. Both actions write audit records.
 - Counts are per shop: `customers/{uid}/shopStats/{shopId}.noShowCount`.
+- **FR-12 callables** (AGREED, user): `startService` (CONFIRMED → IN_SERVICE, sets `actualStart`), `finishService` (IN_SERVICE → COMPLETED, sets `actualEnd`), `markNoShow`, `reverseNoShow`. Same roles for all four: the owner, or the assigned barber. Anyone else gets `BOOKING_NOT_FOUND`. Time is always server time, read inside the transaction.
+- **Start guard:** `startService` is allowed from 60 min before the scheduled start (`now >= start - 60 min`); earlier returns `TOO_EARLY` with the allowed time in `details`. No upper limit. `markNoShow` returns `TOO_EARLY` before `start + 15 min` the same way.
+- **`noShowAt`:** `markNoShow` sets `appointments.noShowAt`; `reverseNoShow` clears it and is allowed while `now <= noShowAt + 24 h`, else `REVERSAL_WINDOW_CLOSED`.
+- **Counter:** mark increments and reverse decrements `noShowCount` in the same transaction as the state change; the decrement never goes below 0.
+- **A no-show keeps its interval on the schedule**, so the slot stays unavailable and a reversal never needs a clash check.
+- **Idempotent replays:** repeating a call whose target state is already reached returns the current summary and changes nothing (no second increment, no second audit record). Any other wrong state returns `INVALID_STATE`.
+- **Audit:** `action` values `start`, `finish`, `noShow`, `noShowReversed`. `start` and `finish` use the deterministic IDs `{bookingId}_IN_SERVICE` and `{bookingId}_COMPLETED`; `noShow` and `noShowReversed` use auto IDs because they can repeat and reverse targets CONFIRMED, which `confirm` already uses.
 - Queue delay (FR-10, stretch): projected delay = expected finish of the current service (actualStart + durationMin) plus remaining queued durations, minus the next booking's start. Details OPEN.
 
 ## A6 Deposits and waitlist — PROPOSED
@@ -132,6 +139,7 @@ Status key: PROPOSED (default in use, needs group approval) · AGREED (confirmed
 | 2026-09-25 | A11 | FR-01 discovery: service `category`, trigger-only shop summary fields, geohash search, client-side next slot (10 shops, 3 days), mock geocode lookup when `ONEMAP_TOKEN` is unset | AGREED (user) |
 | 2026-09-25 | A12 | FR-08 personal time blocks: `createBlock`/`removeBlock`, overlapping blocks rejected, barbers see only own blocks, live holds and bookings reported as conflicts and left alone, block intervals carry `refId`, no `auditLog` | AGREED (user) |
 | 2026-09-25 | architecture | `auditLog` gains `action` ("hold", "confirm", "release", "cancel", "reschedule", "lateCancelRefused") so same-state records are distinguishable; refused late attempts and reschedules are recorded as CONFIRMED→CONFIRMED with auto IDs | AGREED (user) |
+| 2026-09-25 | A5/architecture | FR-12: `startService`/`finishService`/`markNoShow`/`reverseNoShow`; `appointments.noShowAt`; start allowed from 60 min before the slot (`TOO_EARLY`); no-show keeps its schedule interval; counter clamped at 0; idempotent replays; audit actions `start`, `finish`, `noShow`, `noShowReversed` (last two with auto IDs) | AGREED (user) |
 
 ---
 
@@ -155,3 +163,4 @@ Living list. Add an entry when a shortcut is taken or something is deferred; rem
 | L13 | `geocode` is unauthenticated (discovery precedes sign-in) and each call can reach OneMap, so it can be spammed. It only has an in-memory cache per instance. | App Check is not wired (L1). | With L1: App Check on all callables; consider a per-client rate limit. | FR-01, NFR-04, NFR-07 |
 | L14 | Next available slot on UI-C1 covers today and the next 2 days for the nearest 10 shops only. Beyond that a card says "No slots in the next 3 days" or "Open shop to see times". The shop summary fields (`priceMin`, `priceMax`, `serviceTypes`, `minDurationMin`) are written by the `summarizeShopServices` trigger, so a shop edited while Functions are not running shows stale values until the next service write. Shops without `lat`/`lng`/`geohash` are never found. Services created before A11 have no `category` until the owner re-saves them (rules require it on save). | Keeps reads low (NFR-07). | Optional: longer horizon; a backfill script for existing shops. | FR-01, NFR-07 |
 | L15 | A block does not stop a customer who already holds a slot in it from confirming: the hold stays and the booking can become CONFIRMED inside blocked time. `createBlock` returns such holds (and confirmed bookings) as conflicts and UI-B1 flags overlapping appointments, but staff cannot cancel or move them from the UI (L10), and no customer is notified (L4, L8). | By decision (A12): blocks never cancel or move bookings. | With UI-B1 staff cancellation (L10) and FR-09 messaging. | FR-08 |
+| L16 | Marking a no-show does not notify the customer and does not free the slot; the booking interval stays on the schedule. No-shows are not yet counted in `dailyStats` (FR-14). | Messaging is mocked and not built (L4); freeing the slot was ruled out (A5) to keep reversal simple. | With FR-09 (notice) and FR-14 (stats). | FR-09, FR-12, FR-14 |

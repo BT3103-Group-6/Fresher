@@ -2,7 +2,7 @@
 // flags and the block form's validation. No emulator needed.
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { blockTimeToMs, dayBounds, displayStatus, isActive, isBooking, overlappingBlocks, partitionDay, timeOptions, toAppointment, validateBlockForm } from '../src/lib/schedule.js'
+import { availableActions, blockTimeToMs, dayBounds, displayStatus, isActive, isBooking, overlappingBlocks, partitionDay, timeOptions, toAppointment, validateBlockForm } from '../src/lib/schedule.js'
 import { sgTimeToMs } from '../src/lib/slots.js'
 
 const KEY = '20300107'
@@ -100,5 +100,31 @@ describe('block form', () => {
     assert.ok(validateBlockForm({ dateKey: KEY, start: '10:00', end: '11:00' }, NOW).start)
     assert.deepEqual(validateBlockForm({ dateKey: KEY, start: '11:00', end: '12:30' }, NOW), {})
     assert.deepEqual(validateBlockForm({ dateKey: KEY, start: '22:00', end: '24:00' }, NOW), {})
+  })
+})
+
+describe('availableActions (FR-12)', () => {
+  const ids = (a, now) => availableActions(a, now).map((x) => `${x.action}:${x.enabled}`)
+  const conf = apt('a', 'CONFIRMED', '14:00', '14:30')
+  it('start unlocks exactly 60 minutes before the start; no-show 15 minutes after', () => {
+    assert.deepEqual(ids(conf, at('13:00') - 1), ['start:false', 'noShow:false'])
+    assert.deepEqual(ids(conf, at('13:00')), ['start:true', 'noShow:false'])
+    assert.deepEqual(ids(conf, at('14:15') - 1), ['start:true', 'noShow:false'])
+    assert.deepEqual(ids(conf, at('14:15')), ['start:true', 'noShow:true'])
+  })
+  it('a disabled action says when it unlocks', () => {
+    const [start, noShow] = availableActions(conf, at('10:00'))
+    assert.equal(start.availableAt, at('13:00'))
+    assert.equal(noShow.availableAt, at('14:15'))
+  })
+  it('in-service offers finish; reverse shows only within 24 hours of marking', () => {
+    assert.deepEqual(ids(apt('a', 'IN_SERVICE', '10:00', '10:30'), NOW), ['finish:true'])
+    const ns = apt('a', 'NO_SHOW', '10:00', '10:30', { noShowAt: NOW })
+    assert.deepEqual(ids(ns, NOW + 24 * 3600e3), ['reverse:true'])
+    assert.deepEqual(ids(ns, NOW + 24 * 3600e3 + 1), [])
+  })
+  it('offers nothing for other states, including an expired hold', () => {
+    for (const status of ['COMPLETED', 'CANCELLED', 'EXPIRED', 'PENDING_PAYMENT']) assert.deepEqual(ids(apt('a', status, '10:00', '10:30'), NOW), [])
+    assert.deepEqual(ids(apt('a', 'HELD', '13:00', '13:30', { holdExpiresAt: NOW - 1 }), NOW), [])
   })
 })

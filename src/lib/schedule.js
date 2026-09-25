@@ -52,6 +52,33 @@ export function partitionDay(appointments, now) {
 /** Blocks that overlap an appointment (half-open intervals). */
 export const overlappingBlocks = (apt, blocks) => blocks.filter((b) => b.start < apt.end && apt.start < b.end)
 
+// FR-12 windows (decisions A5). The server enforces them with its own clock; these only decide what to show.
+export const START_EARLY_MS = 60 * 60e3
+export const NO_SHOW_AFTER_MS = 15 * 60e3
+export const REVERSAL_MS = 24 * 3600e3
+
+/**
+ * Staff actions to offer for an appointment: [{ action, label, enabled, availableAt? }].
+ * A disabled action carries `availableAt` (ms) so the row can say when it unlocks. Reverse disappears once
+ * its 24 h window has closed; `start` unlocks 60 min before the slot, `noShow` 15 min after it starts.
+ */
+export function availableActions(apt, now) {
+  const status = displayStatus(apt, now)
+  if (status === 'CONFIRMED') {
+    const startAt = apt.start - START_EARLY_MS
+    const noShowAt = apt.start + NO_SHOW_AFTER_MS
+    return [
+      { action: 'start', label: 'Start', enabled: now >= startAt, availableAt: startAt },
+      { action: 'noShow', label: 'Mark no-show', enabled: now >= noShowAt, availableAt: noShowAt },
+    ]
+  }
+  if (status === 'IN_SERVICE') return [{ action: 'finish', label: 'Finish', enabled: true }]
+  if (status === 'NO_SHOW' && apt.noShowAt && now <= apt.noShowAt + REVERSAL_MS) {
+    return [{ action: 'reverse', label: 'Reverse no-show', enabled: true }]
+  }
+  return []
+}
+
 /** Firestore appointment data (Timestamps) -> plain ms fields. */
 export function toAppointment(id, data) {
   return {
@@ -66,6 +93,9 @@ export function toAppointment(id, data) {
     customerPhoneMasked: data.customerPhoneMasked ?? null,
     priceCents: data.priceCents,
     durationMin: data.durationMin,
+    noShowAt: data.noShowAt ? data.noShowAt.toMillis() : null,
+    actualStart: data.actualStart ? data.actualStart.toMillis() : null,
+    actualEnd: data.actualEnd ? data.actualEnd.toMillis() : null,
   }
 }
 

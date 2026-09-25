@@ -97,7 +97,7 @@ Per barber: `completed, valueCents, noShows, bookedMin, openMin`
 `walkInName, serviceId, barberId, joinedAt, startedAt, endedAt`
 
 ### appointments/{bookingId}  (top level; bookingId = client requestId)
-`shopId, barberId, serviceId, customerId (null while HELD; set by `confirmBooking`), customerName, customerPhoneMasked, start, end, status, holdExpiresAt, priceCents, durationMin (snapshots, FR-06), requestId, lateCancel, lateCancelAttempted (set on the first refused late cancel; limits the `lateCancels` increment to once per booking), depositId, actualStart, actualEnd (FR-10)`
+`shopId, barberId, serviceId, customerId (null while HELD; set by `confirmBooking`), customerName, customerPhoneMasked, start, end, status, holdExpiresAt, priceCents, durationMin (snapshots, FR-06), requestId, lateCancel, lateCancelAttempted (set on the first refused late cancel; limits the `lateCancels` increment to once per booking), depositId, actualStart, actualEnd (FR-10, FR-12), noShowAt (FR-12; set by `markNoShow`, cleared by `reverseNoShow`)`
 `customerName` and `customerPhoneMasked` are copied onto the appointment by `confirmBooking` so staff never need to read `customers/{uid}`. The number is masked only (e.g. `+65 9••• ••12`); the full number is never stored on the appointment.
 
 ### customers/{uid}
@@ -110,7 +110,7 @@ taskId is deterministic (`{bookingId}_{type}`) to prevent duplicates.
 
 ### auditLog/{eventId}
 `bookingId, shopId, actorUid, role, action, fromStatus, toStatus, at, expireAt (= at + 12 months, Firestore TTL policy, NFR-08)`
-`action` says what happened, because some records have the same from and to status: `hold` (none→HELD), `confirm` (HELD→CONFIRMED), `release` (HELD→EXPIRED, by `releaseHold` or lazily when a confirm finds the hold expired), `cancel` (CONFIRMED→CANCELLED, by customer or staff), `reschedule` (CONFIRMED→CONFIRMED, the slot moved) and `lateCancelRefused` (CONFIRMED→CONFIRMED, a customer cancel refused under the `block` policy). Records for transitions use the deterministic ID `{bookingId}_{TO}`; `reschedule` and `lateCancelRefused` can repeat, so they use auto IDs.
+`action` says what happened, because some records have the same from and to status: `hold` (none→HELD), `confirm` (HELD→CONFIRMED), `release` (HELD→EXPIRED, by `releaseHold` or lazily when a confirm finds the hold expired), `cancel` (CONFIRMED→CANCELLED, by customer or staff), `reschedule` (CONFIRMED→CONFIRMED, the slot moved) `lateCancelRefused` (CONFIRMED→CONFIRMED, a customer cancel refused under the `block` policy), `start` (CONFIRMED→IN_SERVICE), `finish` (IN_SERVICE→COMPLETED), `noShow` (CONFIRMED→NO_SHOW) and `noShowReversed` (NO_SHOW→CONFIRMED). Records for transitions use the deterministic ID `{bookingId}_{TO}`; `reschedule`, `lateCancelRefused`, `noShow` and `noShowReversed` can repeat (or would collide with `confirm`), so they use auto IDs.
 No client can write or update. Written only inside the same transaction as the state change (a refused late attempt is written in its own transaction, together with the once-per-booking `lateCancels` increment, and the error is returned after it commits).
 
 ### deposits/{depositId}  (extension, FR-13)
@@ -133,10 +133,10 @@ Terminal: `COMPLETED, CANCELLED, EXPIRED`. `NO_SHOW` can be reversed to `CONFIRM
 | HELD / PENDING_PAYMENT | EXPIRED | Scheduler | 10 min elapsed, 3 failed OTPs, or payment failed |
 | CONFIRMED | CONFIRMED | Customer: `reschedule` (OTP) | New interval free; atomic swap |
 | CONFIRMED | CANCELLED | Customer (OTP) or staff | Notice rule (decisions A3); late → block or flag |
-| CONFIRMED | IN_SERVICE | Staff: start | sets `actualStart` |
-| IN_SERVICE | COMPLETED | Staff: finish | sets `actualEnd` |
-| CONFIRMED | NO_SHOW | Staff: `markNoShow` | now ≥ start + 15 min |
-| NO_SHOW | CONFIRMED | Staff: reverse | within 24 h of marking |
+| CONFIRMED | IN_SERVICE | Staff: `startService` | now ≥ start − 60 min; sets `actualStart` |
+| IN_SERVICE | COMPLETED | Staff: `finishService` | sets `actualEnd` |
+| CONFIRMED | NO_SHOW | Staff: `markNoShow` | now ≥ start + 15 min; increments `noShowCount` |
+| NO_SHOW | CONFIRMED | Staff: `reverseNoShow` | within 24 h of `noShowAt`; decrements `noShowCount` |
 
 ## Callable functions (all in asia-southeast1)
 `geocode, holdSlot, confirmBooking, releaseHold, cancelBooking, reschedule, markNoShow, reverseNoShow, startService, finishService, createBlock, addBarber (sets claims), createDeposit, paymentWebhook, joinWaitlist, claimOffer, verifyShop (admin)`

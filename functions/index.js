@@ -162,3 +162,9 @@ exports.summarizeShopServices = onDocumentWritten(
 const blocks = require("./blocks");
 exports.createBlock = onCall((request) => blocks.createBlock(request));
 exports.removeBlock = onCall((request) => blocks.removeBlock(request));
+
+const service = require("./service");
+exports.startService = onCall((request) => service.startService(request));
+exports.finishService = onCall((request) => service.finishService(request));
+exports.markNoShow = onCall((request) => service.markNoShow(request));
+exports.reverseNoShow = onCall((request) => service.reverseNoShow(request));

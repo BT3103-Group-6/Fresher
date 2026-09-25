@@ -897,3 +897,180 @@ describe('FR-08 personal time blocks', () => {
     assert.equal((await hold(shopId, 'b1', slot(11))).ok, true)
   })
 })
+
+// ---- FR-12: start/finish and no-show tracking (decisions A5) ----
+const stats = async (shopId, uid) => (await db.doc(`customers/${uid}/shopStats/${shopId}`).get()).data()?.noShowCount ?? 0
+const svc = (name, requestId, idToken) => call(name, { requestId }, idToken)
+
+describe('FR-12 start and finish', () => {
+  it('starts then finishes: sets actualStart and actualEnd, audits once each, replays without change', async () => {
+    const shopId = await makeShop(['b1'])
+    const barber = await staffToken({ shopId, role: 'barber', barberId: 'b1' })
+    const id = await seedBooking(shopId, 'b1', Date.now() + 30 * MIN, 'cust-fr12a')
+    assert.equal((await svc('finishService', id, barber)).reason, 'INVALID_STATE')
+    const s = await svc('startService', id, barber)
+    assert.ok(s.ok, s.reason)
+    assert.equal(s.data.status, 'IN_SERVICE')
+    const started = (await apt(id)).actualStart.toMillis()
+    assert.ok(Math.abs(started - Date.now()) < 60e3)
+    const again = await svc('startService', id, barber)
+    assert.ok(again.ok)
+    assert.equal((await apt(id)).actualStart.toMillis(), started)
+    const f = await svc('finishService', id, barber)
+    assert.ok(f.ok, f.reason)
+    const a = await apt(id)
+    assert.equal(a.status, 'COMPLETED')
+    assert.ok(a.actualEnd.toMillis() >= started)
+    assert.deepEqual(await actions(shopId, id), ['finish', 'start'])
+    assert.equal((await svc('markNoShow', id, barber)).reason, 'INVALID_STATE')
+  })
+
+  it('refuses to start more than 60 minutes early with TOO_EARLY, and allows it inside the hour', async () => {
+    const shopId = await makeShop(['b1'])
+    const owner = await staffToken({ shopId, role: 'owner' })
+    const early = await seedBooking(shopId, 'b1', Date.now() + 90 * MIN, 'cust-fr12b')
+    assert.equal((await svc('startService', early, owner)).reason, 'TOO_EARLY')
+    assert.equal((await apt(early)).status, 'CONFIRMED')
+    assert.equal((await audit(shopId, early)).length, 0)
+    const soon = await seedBooking(shopId, 'b1', Date.now() + 50 * MIN, 'cust-fr12b')
+    assert.equal((await svc('startService', soon, owner)).ok, true)
+  })
+})
+
+describe('FR-12 no-show', () => {
+  it('is refused before start + 15 minutes and allowed after, with count and audit', async () => {
+    const shopId = await makeShop(['b1'])
+    const owner = await staffToken({ shopId, role: 'owner' })
+    const uid = `cust-${randomUUID().slice(0, 8)}`
+    const soon = await seedBooking(shopId, 'b1', Date.now() - 10 * MIN, uid)
+    assert.equal((await svc('markNoShow', soon, owner)).reason, 'TOO_EARLY')
+    assert.equal(await stats(shopId, uid), 0)
+    const late = await seedBooking(shopId, 'b1', Date.now() - 20 * MIN, uid)
+    const r = await svc('markNoShow', late, owner)
+    assert.ok(r.ok, r.reason)
+    assert.equal(r.data.status, 'NO_SHOW')
+    assert.equal(await stats(shopId, uid), 1)
+    const a = await apt(late)
+    assert.equal(a.status, 'NO_SHOW')
+    assert.ok(a.noShowAt)
+    assert.deepEqual(await actions(shopId, late), ['noShow'])
+    // The interval stays on the schedule, so the slot is still taken.
+    const sched = (await db.doc(`shops/${shopId}/schedules/b1_${dateKey(a.start.toMillis())}`).get()).data()
+    assert.equal(sched.intervals.filter((iv) => iv.refId === late).length, 1)
+  })
+
+  it('reverse restores CONFIRMED, decrements, clears noShowAt, audits, and cannot go below 0', async () => {
+    const shopId = await makeShop(['b1'])
+    const barber = await staffToken({ shopId, role: 'barber', barberId: 'b1' })
+    const uid = `cust-${randomUUID().slice(0, 8)}`
+    const id = await seedBooking(shopId, 'b1', Date.now() - 20 * MIN, uid)
+    assert.equal((await svc('reverseNoShow', id, barber)).ok, true, 'reverse of a CONFIRMED booking is an idempotent no-op')
+    assert.equal(await stats(shopId, uid), 0)
+    await svc('markNoShow', id, barber)
+    const r = await svc('reverseNoShow', id, barber)
+    assert.ok(r.ok, r.reason)
+    assert.equal(await stats(shopId, uid), 0)
+    const a = await apt(id)
+    assert.equal(a.status, 'CONFIRMED')
+    assert.equal(a.noShowAt, undefined)
+    assert.deepEqual(await actions(shopId, id), ['noShow', 'noShowReversed'])
+    // A stale NO_SHOW with the counter already at 0 stays at 0 after reversal.
+    const stale = await seedBooking(shopId, 'b1', Date.now() - 40 * MIN, uid)
+    await db.doc(`appointments/${stale}`).update({ status: 'NO_SHOW', noShowAt: Timestamp.fromMillis(Date.now() - MIN) })
+    assert.equal((await svc('reverseNoShow', stale, barber)).ok, true)
+    assert.equal(await stats(shopId, uid), 0)
+  })
+
+  it('writes exactly one audit record after each call, with the right fields (auto IDs, so found by bookingId, not by document ID)', async () => {
+    const shopId = await makeShop(['b1'])
+    const owner = await staffToken({ shopId, role: 'owner' })
+    const uid = `cust-${randomUUID().slice(0, 8)}`
+    const id = await seedBooking(shopId, 'b1', Date.now() - 20 * MIN, uid)
+    const expect = async (action, from, to, total) => {
+      const log = await audit(shopId, id)
+      assert.equal(log.length, total, `expected ${total} audit records, found ${JSON.stringify(log.map((l) => l.action))}`)
+      const rec = log.filter((l) => l.action === action)
+      assert.equal(rec.length, 1, `expected one ${action} record`)
+      assert.equal(rec[0].bookingId, id)
+      assert.equal(rec[0].shopId, shopId)
+      assert.equal(rec[0].role, 'owner')
+      assert.ok(rec[0].actorUid)
+      assert.equal(rec[0].fromStatus, from)
+      assert.equal(rec[0].toStatus, to)
+      assert.ok(Math.abs(rec[0].at.toMillis() - Date.now()) < 60e3)
+      assert.ok(rec[0].expireAt.toMillis() > Date.now() + 300 * 24 * 3600e3)
+    }
+    assert.ok((await svc('markNoShow', id, owner)).ok)
+    await expect('noShow', 'CONFIRMED', 'NO_SHOW', 1)
+    assert.ok((await svc('markNoShow', id, owner)).ok, 'replay')
+    await expect('noShow', 'CONFIRMED', 'NO_SHOW', 1) // a replay writes nothing more.
+    assert.ok((await svc('reverseNoShow', id, owner)).ok)
+    await expect('noShowReversed', 'NO_SHOW', 'CONFIRMED', 2)
+    assert.ok((await svc('markNoShow', id, owner)).ok, 'mark again after a reversal')
+    assert.deepEqual(await actions(shopId, id), ['noShow', 'noShow', 'noShowReversed'])
+  })
+
+  it('refuses reversal after 24 hours', async () => {
+    const shopId = await makeShop(['b1'])
+    const owner = await staffToken({ shopId, role: 'owner' })
+    const uid = `cust-${randomUUID().slice(0, 8)}`
+    const id = await seedBooking(shopId, 'b1', Date.now() - 30 * 3600e3, uid)
+    await db.doc(`appointments/${id}`).update({ status: 'NO_SHOW', noShowAt: Timestamp.fromMillis(Date.now() - 24 * 3600e3 - 60e3) })
+    await db.doc(`customers/${uid}/shopStats/${shopId}`).set({ noShowCount: 1 })
+    assert.equal((await svc('reverseNoShow', id, owner)).reason, 'REVERSAL_WINDOW_CLOSED')
+    assert.equal((await apt(id)).status, 'NO_SHOW')
+    assert.equal(await stats(shopId, uid), 1)
+  })
+
+  it('only the shop owner or the assigned barber may act; everyone else sees BOOKING_NOT_FOUND or is denied', async () => {
+    const shopId = await makeShop(['b1', 'b2'])
+    const other = await makeShop(['b1'])
+    const uid = `cust-${randomUUID().slice(0, 8)}`
+    const id = await seedBooking(shopId, 'b1', Date.now() - 20 * MIN, uid)
+    const denied = [
+      await staffToken({ shopId, role: 'barber', barberId: 'b2' }),
+      await staffToken({ shopId: other, role: 'owner' }),
+      await staffToken({ shopId: other, role: 'barber', barberId: 'b1' }),
+    ]
+    for (const t of denied) assert.equal((await svc('markNoShow', id, t)).reason, 'BOOKING_NOT_FOUND')
+    assert.equal((await svc('markNoShow', id, undefined)).ok, false)
+    assert.equal((await svc('markNoShow', id, (await phoneIdToken(newPhone())).idToken)).ok, false)
+    assert.equal((await svc('startService', id, denied[0])).reason, 'BOOKING_NOT_FOUND')
+    assert.equal((await apt(id)).status, 'CONFIRMED')
+    assert.equal(await stats(shopId, uid), 0)
+    const assigned = await staffToken({ shopId, role: 'barber', barberId: 'b1' })
+    assert.equal((await svc('markNoShow', id, assigned)).ok, true)
+  })
+
+  it('20 simultaneous markNoShow calls increment the count once and audit once', async () => {
+    const shopId = await makeShop(['b1'])
+    const owner = await staffToken({ shopId, role: 'owner' })
+    const uid = `cust-${randomUUID().slice(0, 8)}`
+    const id = await seedBooking(shopId, 'b1', Date.now() - 20 * MIN, uid)
+    const results = await Promise.all(Array.from({ length: 20 }, () => svc('markNoShow', id, owner)))
+    assert.ok(results.every((r) => r.ok), `unexpected: ${JSON.stringify(results.filter((r) => !r.ok))}`)
+    assert.equal(await stats(shopId, uid), 1)
+    assert.equal((await apt(id)).status, 'NO_SHOW')
+    assert.deepEqual(await actions(shopId, id), ['noShow'])
+  })
+
+  it('markNoShow racing reverseNoShow ends consistent: count, status and audit agree', async () => {
+    const shopId = await makeShop(['b1'])
+    const owner = await staffToken({ shopId, role: 'owner' })
+    const uid = `cust-${randomUUID().slice(0, 8)}`
+    const id = await seedBooking(shopId, 'b1', Date.now() - 20 * MIN, uid)
+    assert.ok((await svc('markNoShow', id, owner)).ok)
+    const results = await Promise.all(Array.from({ length: 20 }, (_, i) => svc(i % 2 ? 'markNoShow' : 'reverseNoShow', id, owner)))
+    // Each call either succeeds or (never here) fails cleanly; a call is never a transport failure.
+    assert.ok(results.every((r) => r.ok || ['INVALID_STATE', 'BUSY'].includes(r.reason)), JSON.stringify(results))
+    const a = await apt(id)
+    const count = await stats(shopId, uid)
+    assert.equal(count, a.status === 'NO_SHOW' ? 1 : 0)
+    assert.equal(a.noShowAt !== undefined, a.status === 'NO_SHOW')
+    const log = await actions(shopId, id)
+    const marks = log.filter((x) => x === 'noShow').length
+    const reversals = log.filter((x) => x === 'noShowReversed').length
+    assert.equal(marks - reversals, count)
+    assert.ok(a.status === 'NO_SHOW' || a.status === 'CONFIRMED')
+  })
+})
