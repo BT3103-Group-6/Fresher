@@ -234,31 +234,40 @@ async function onAction(a, action) {
 </script>
 
 <template>
-  <main>
-    <h1>Barber schedule</h1>
+  <main class="schedule">
+    <header class="page-head">
+      <h1>Barber schedule</h1>
+      <p class="lede">Your day at a glance: bookings, holds and personal time.</p>
+    </header>
 
     <p v-if="!online" class="banner" role="alert">You appear to be offline. Changes need a connection; your entries are kept.</p>
     <p v-if="loadError" class="banner" role="alert">{{ loadError }}</p>
 
-    <div class="day-nav">
-      <div v-if="ownerMode" class="field">
-        <label for="barber">Barber</label>
-        <select id="barber" v-model="barberId">
-          <option v-for="b in barbers" :key="b.id" :value="b.id">{{ b.displayName }}{{ b.active ? '' : ' (deactivated)' }}</option>
-        </select>
+    <div class="toolbar card">
+      <fieldset v-if="ownerMode" class="barber-pick">
+        <legend>Barber</legend>
+        <div class="picks" role="radiogroup" aria-label="Barber">
+          <label v-for="b in barbers" :key="b.id" class="pick">
+            <input v-model="barberId" type="radio" name="barber" :value="b.id" />
+            <span>{{ b.displayName }}{{ b.active ? '' : ' (deactivated)' }}</span>
+          </label>
+        </div>
+      </fieldset>
+      <div class="day-nav">
+        <button class="btn secondary" type="button" @click="shift(-1)">Previous day</button>
+        <div class="field">
+          <label for="day">Date</label>
+          <input id="day" type="date" :value="asInput(dateKey)" @change="(e) => e.target.value && (dateKey = fromInput(e.target.value))" />
+        </div>
+        <button class="btn secondary" type="button" @click="shift(1)">Next day</button>
+        <button class="btn secondary" type="button" @click="dateKey = sgDateKey(Date.now())">Today</button>
       </div>
-      <button class="btn secondary" type="button" @click="shift(-1)">Previous day</button>
-      <div class="field">
-        <label for="day">Date</label>
-        <input id="day" type="date" :value="asInput(dateKey)" @change="(e) => e.target.value && (dateKey = fromInput(e.target.value))" />
-      </div>
-      <button class="btn secondary" type="button" @click="shift(1)">Next day</button>
-      <button class="btn secondary" type="button" @click="dateKey = sgDateKey(Date.now())">Today</button>
     </div>
 
     <p v-if="ownerMode && loaded.barbers && !barbers.length" class="hint">This shop has no barbers yet. Add one in Shop configuration.</p>
 
-    <section v-else aria-labelledby="day-h">
+    <section v-else class="day" aria-labelledby="day-h">
+      <div class="comb-rule" aria-hidden="true"></div>
       <h2 id="day-h">{{ ownerMode && barberName ? `${barberName}, ` : '' }}{{ dayLabel }}</h2>
       <p class="hint" role="status">
         <template v-if="!ready">Loading…</template>
@@ -269,7 +278,7 @@ async function onAction(a, action) {
         </template>
       </p>
       <p v-if="removeError" class="banner" role="alert">{{ removeError }}</p>
-      <p class="hint">
+      <p class="hint mock-note">
         Customer messages are sent by a <strong>mock</strong> provider in this prototype: reminders are logged, and no real SMS is sent.
       </p>
       <p v-if="reminderError" class="banner" role="alert">{{ reminderError }}</p>
@@ -335,11 +344,12 @@ async function onAction(a, action) {
             <p v-for="b in flagged(item.apt)" :key="b.id" class="meta"><span class="badge warn">Overlaps a personal block</span> {{ b.reason || 'Personal time' }}, {{ range(b.start, b.end) }}</p>
           </template>
         </li>
-        <li v-if="ready && !timeline.length">Nothing scheduled for this day.</li>
+        <li v-if="ready && !timeline.length" class="empty">Nothing scheduled for this day.</li>
       </ul>
 
-      <label class="check">
-        <input v-model="showHidden" type="checkbox" /> Show expired and cancelled ({{ parts.inactive.length }})
+      <label class="toggle">
+        <input v-model="showHidden" type="checkbox" />
+        <span class="toggle-body"><span class="toggle-box" aria-hidden="true"></span>Show expired and cancelled ({{ parts.inactive.length }})</span>
       </label>
       <ul v-if="showHidden && parts.inactive.length" class="timeline">
         <li v-for="a in parts.inactive" :key="a.id" class="gone">
@@ -349,7 +359,8 @@ async function onAction(a, action) {
       </ul>
     </section>
 
-    <section aria-labelledby="block-h">
+    <section class="block-section" aria-labelledby="block-h">
+      <div class="comb-rule" aria-hidden="true"></div>
       <h2 id="block-h">Block personal time</h2>
       <p class="hint">
         Customers cannot book blocked time. Bookings already made are not cancelled; any that overlap are listed for you.
@@ -375,15 +386,17 @@ async function onAction(a, action) {
       </div>
       <p v-if="formError" class="banner" role="alert">{{ formError }}</p>
 
-      <form novalidate @submit.prevent="onCreate">
-        <div v-if="ownerMode" class="field">
-          <label for="f-barber">Barber</label>
-          <select id="f-barber" v-model="form.barberId" :aria-invalid="!!errors.barber" :aria-describedby="errors.barber ? 'f-barber-err' : undefined">
-            <option value="" disabled>Select a barber</option>
-            <option v-for="b in barbers" :key="b.id" :value="b.id">{{ b.displayName }}</option>
-          </select>
+      <form class="card block-form" novalidate @submit.prevent="onCreate">
+        <fieldset v-if="ownerMode" class="barber-pick" :aria-describedby="errors.barber ? 'f-barber-err' : undefined">
+          <legend>Barber</legend>
+          <div class="picks" role="radiogroup" aria-label="Barber to block">
+            <label v-for="b in barbers" :key="b.id" class="pick">
+              <input v-model="form.barberId" type="radio" name="f-barber" :value="b.id" />
+              <span>{{ b.displayName }}</span>
+            </label>
+          </div>
           <span v-if="errors.barber" id="f-barber-err" class="error">{{ errors.barber }}</span>
-        </div>
+        </fieldset>
         <div class="form-grid">
           <div class="field">
             <label for="f-date">Date</label>
@@ -421,3 +434,88 @@ async function onAction(a, action) {
     </section>
   </main>
 </template>
+
+<style scoped>
+.schedule { padding-bottom: var(--space-6); }
+.page-head { margin-bottom: clamp(1.5rem, 5vw, 2.5rem); }
+.page-head h1 { font-size: clamp(1.9rem, 5vw, 2.75rem); line-height: 1.1; letter-spacing: -0.03em; margin-bottom: var(--space-2); }
+.lede { font-size: 1.1rem; color: var(--color-muted); }
+.schedule .banner { margin-bottom: var(--space-4); }
+.schedule section { margin-bottom: clamp(2.5rem, 7vw, 4rem); }
+.schedule h2 { font-size: clamp(1.3rem, 3vw, 1.7rem); margin-bottom: var(--space-2); }
+.comb-rule {
+  width: 3.5rem; height: 0.9rem; margin-bottom: var(--space-3);
+  background: repeating-linear-gradient(115deg, var(--color-accent) 0 3px, transparent 3px 11px);
+  opacity: 0.55;
+}
+
+/* Barber picker and day navigation */
+.toolbar { padding: var(--space-4) var(--space-5); margin-bottom: clamp(2rem, 6vw, 3rem); display: grid; gap: var(--space-4); }
+.barber-pick { border: 0; padding: 0; margin: 0; min-width: 0; }
+.barber-pick legend { padding: 0; margin-bottom: var(--space-2); }
+.barber-pick .error { display: block; margin-top: var(--space-2); }
+.toolbar .day-nav { margin: 0; gap: var(--space-2) var(--space-3); }
+.toolbar .day-nav .btn { min-width: 6.5rem; }
+@media (max-width: 480px) {
+  .toolbar { padding: var(--space-4); }
+  .toolbar .day-nav { display: grid; grid-template-columns: 1fr 1fr; }
+  .toolbar .day-nav .field { grid-column: 1 / -1; order: -1; }
+  .toolbar .day-nav .btn:last-child { grid-column: 1 / -1; }
+}
+
+/* Selectable chips: selected = teal border + tint + check mark + bold, so colour is never the only cue */
+.picks { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.pick { position: relative; display: block; }
+.pick input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.pick span {
+  display: flex; align-items: center; justify-content: center; gap: var(--space-1); min-height: 44px; padding: 0 var(--space-4);
+  border: 2px solid var(--color-line); border-radius: var(--radius-pill); background: var(--color-surface); font-weight: 600;
+}
+.pick input:hover + span { border-color: var(--color-field-border); background: var(--color-tint); }
+.pick input:checked + span { border-color: var(--color-accent); background: var(--color-tint); color: var(--color-accent-dark); font-weight: 800; }
+.pick input:checked + span::before { content: '\2713'; }
+.pick input:focus-visible + span { outline: 3px solid var(--color-focus); outline-offset: 2px; }
+
+.toggle { position: relative; display: block; max-width: 24rem; }
+.toggle input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.toggle-body { display: flex; align-items: center; gap: var(--space-3); min-height: 48px; padding: var(--space-2) var(--space-4); border: 2px solid var(--color-line); border-radius: var(--radius-md); background: var(--color-surface); font-weight: 600; }
+.toggle-box { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 1.4rem; height: 1.4rem; border: 2px solid var(--color-field-border); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-surface); font-size: 0.85rem; font-weight: 800; }
+.toggle input:checked + .toggle-body { border-color: var(--color-accent); background: var(--color-tint); color: var(--color-accent-dark); font-weight: 800; }
+.toggle input:checked + .toggle-body .toggle-box { background: var(--color-accent); border-color: var(--color-accent); }
+.toggle input:checked + .toggle-body .toggle-box::before { content: '\2713'; }
+.toggle input:focus-visible + .toggle-body { outline: 3px solid var(--color-focus); outline-offset: 2px; }
+
+/* Day timeline: one card per item; the left rail is solid (confirmed), dashed (held) or grey (block), and each card carries a text badge */
+.mock-note { margin-bottom: var(--space-4); }
+.timeline { display: grid; gap: var(--space-3); margin-bottom: var(--space-5); }
+.timeline > li {
+  margin: 0; padding: var(--space-4) var(--space-5); background: var(--color-surface); border: 1px solid var(--color-line);
+  border-left-width: 6px; border-radius: var(--radius-lg); box-shadow: var(--shadow-card);
+}
+.timeline > li.block { background: var(--color-neutral-bg); box-shadow: none; }
+.timeline > li.empty { color: var(--color-muted); background: transparent; border: 0; box-shadow: none; padding: var(--space-4) 0; }
+.timeline .when { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); font-size: var(--text-lg); margin: 0 0 var(--space-1); }
+.timeline .when .badge { font-size: var(--text-xs); }
+.timeline .meta { margin: 0 0 var(--space-1); }
+.timeline .reminders { margin: var(--space-3) 0; padding-top: var(--space-3); border-top: 1px solid var(--color-line); }
+.timeline .reminders li { padding: var(--space-1) 0; gap: var(--space-1) var(--space-3); }
+.timeline .row-actions { gap: var(--space-2) var(--space-3); margin-top: var(--space-3); align-items: center; }
+.timeline .row-actions .btn { min-width: 8rem; }
+.timeline > li > p[role='alert'] { margin-top: var(--space-3); }
+@media (max-width: 480px) {
+  .timeline > li { padding: var(--space-4); }
+  .timeline .row-actions .btn { flex: 1 1 8rem; }
+}
+@media (min-width: 900px) {
+  .timeline { max-width: 52rem; }
+}
+
+/* Block form */
+.block-section > .hint { max-width: 40rem; margin-bottom: var(--space-4); }
+.block-form { max-width: 40rem; padding: var(--space-5); box-shadow: 0 8px 28px rgba(30, 43, 42, 0.1); }
+.block-form .barber-pick { margin-bottom: var(--space-4); }
+.block-form .form-grid { grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 0 var(--space-3); }
+.block-form .field { margin-bottom: var(--space-4); }
+.block-form > .btn { width: 100%; }
+.alert-list { margin-top: var(--space-2); }
+</style>

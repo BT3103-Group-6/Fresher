@@ -321,16 +321,20 @@ async function onMove(b) {
 </script>
 
 <template>
-  <main>
-    <h1>My bookings</h1>
-    <p class="waitlist-link">On a waitlist? <router-link :to="{ name: 'waitlist' }">See my waitlist entries and offers</router-link></p>
+  <main class="bookings">
+    <header class="page-head">
+      <h1>My bookings</h1>
+      <p class="lede">See, move or cancel your appointments.</p>
+      <p class="waitlist-link">On a waitlist? <router-link :to="{ name: 'waitlist' }">See my waitlist entries and offers</router-link></p>
+    </header>
 
     <p v-if="!online" class="banner" role="alert">You appear to be offline. Reconnect to continue.</p>
     <p v-if="formError" class="banner" role="alert">{{ formError }}</p>
-    <p v-if="notice" class="hint" role="status">{{ notice }}</p>
+    <p v-if="notice" class="banner success" role="status">{{ notice }}</p>
 
-    <form v-if="step === 'phone'" novalidate @submit.prevent="onSendCode">
-      <p>Verify your mobile number to see and change your bookings.</p>
+    <form v-if="step === 'phone'" class="card verify" novalidate @submit.prevent="onSendCode">
+      <h2>Verify your mobile</h2>
+      <p class="hint step-intro">Verify your mobile number to see and change your bookings.</p>
       <div class="field">
         <label for="phone">Singapore mobile number</label>
         <input id="phone" v-model="phone" type="tel" inputmode="tel" autocomplete="tel-national" placeholder="9123 4567"
@@ -341,37 +345,42 @@ async function onMove(b) {
       <button class="btn" type="submit" :disabled="pending || !online">{{ pending ? 'Sending code…' : 'Send code' }}</button>
     </form>
 
-    <form v-else-if="step === 'code'" novalidate @submit.prevent="onVerify">
-      <p>We sent a code to {{ phone }}.</p>
+    <form v-else-if="step === 'code'" class="card verify" novalidate @submit.prevent="onVerify">
+      <h2>Enter your code</h2>
+      <p class="hint step-intro">We sent a code to {{ phone }}.</p>
       <div class="field">
         <label for="code">6-digit code</label>
         <input id="code" v-model="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6"
           :aria-invalid="!!errors.code" :aria-describedby="errors.code ? 'code-err' : undefined" />
         <span v-if="errors.code" id="code-err" class="error">{{ errors.code }}</span>
       </div>
-      <div class="row-actions">
+      <div class="row-actions card-actions">
         <button class="btn" type="submit" :disabled="pending || !online">{{ pending ? 'Verifying…' : 'Verify' }}</button>
         <button class="btn secondary" type="button" :disabled="pending" @click="step = 'phone'">Change number</button>
       </div>
     </form>
 
     <template v-else>
-      <div class="tabs" role="tablist" aria-label="My bookings" @keydown="onTabKey">
-        <button id="tab-upcoming" class="tab" type="button" role="tab" aria-controls="panel-bookings"
+      <div class="seg" role="tablist" aria-label="My bookings" @keydown="onTabKey">
+        <button id="tab-upcoming" class="seg-tab" type="button" role="tab" aria-controls="panel-bookings"
           :aria-selected="tab === 'upcoming'" :tabindex="tab === 'upcoming' ? 0 : -1" @click="tab = 'upcoming'">Upcoming</button>
-        <button id="tab-history" class="tab" type="button" role="tab" aria-controls="panel-bookings"
+        <button id="tab-history" class="seg-tab" type="button" role="tab" aria-controls="panel-bookings"
           :aria-selected="tab === 'history'" :tabindex="tab === 'history' ? 0 : -1" @click="tab = 'history'">History</button>
       </div>
 
       <div id="panel-bookings" role="tabpanel" :aria-labelledby="`tab-${tab}`">
-      <p v-if="loadingList" class="hint">Loading your bookings…</p>
-      <p v-else-if="tab === 'upcoming' && !bookings.length && !awaiting.length">You have no upcoming bookings.</p>
-      <p v-else-if="tab === 'history' && !history.length">You have no past bookings yet.</p>
+      <p v-if="loadingList" class="hint empty">Loading your bookings…</p>
+      <p v-else-if="tab === 'upcoming' && !bookings.length && !awaiting.length" class="empty">You have no upcoming bookings.</p>
+      <p v-else-if="tab === 'history' && !history.length" class="empty">You have no past bookings yet.</p>
+
+      <div class="list-grid">
 
       <template v-if="tab === 'history'">
-        <section v-for="b in history" :key="b.id" class="card" :aria-labelledby="`hh-${b.id}`">
-          <h2 :id="`hh-${b.id}`">{{ shopOf(b)?.name ?? (meta[b.shopId]?.shopUnavailable ? 'Shop no longer available' : 'Past booking') }}</h2>
-          <p class="badge" :class="{ off: b.status !== 'COMPLETED' }">Status: {{ historyLabel(b) }}</p>
+        <section v-for="b in history" :key="b.id" class="card booking" :aria-labelledby="`hh-${b.id}`">
+          <div class="card-head">
+            <h2 :id="`hh-${b.id}`">{{ shopOf(b)?.name ?? (meta[b.shopId]?.shopUnavailable ? 'Shop no longer available' : 'Past booking') }}</h2>
+            <p class="badge" :class="{ off: b.status !== 'COMPLETED' }">Status: {{ historyLabel(b) }}</p>
+          </div>
           <dl class="summary">
             <dt>Service</dt><dd>{{ serviceOf(b)?.name ?? 'Not available' }} · {{ b.durationMin }} min</dd>
             <dt>Barber</dt><dd>{{ barberOf(b)?.displayName ?? 'Not available' }}</dd>
@@ -382,33 +391,34 @@ async function onMove(b) {
           <div v-if="rebookPlan(b)?.notes.length" class="hint" :id="`rb-${b.id}`">
             <p v-for="n in rebookPlan(b).notes" :key="n">{{ n }}</p>
           </div>
-          <div class="row-actions">
+          <div class="row-actions card-actions">
             <button class="btn secondary" type="button" :disabled="pending || rebookPlan(b)?.canRebook === false"
               :aria-describedby="rebookPlan(b)?.notes.length ? `rb-${b.id}` : undefined" @click="onRebook(b)">Rebook</button>
           </div>
         </section>
-        <button v-if="historyAll.length > historyShown" class="btn secondary" type="button" @click="historyShown += HISTORY_PAGE">
-          Show more
-        </button>
       </template>
 
       <template v-else>
-      <section v-for="b in awaiting" :key="`pay-${b.id}`" class="card" :aria-labelledby="`ph-${b.id}`">
-        <h2 :id="`ph-${b.id}`">{{ shopOf(b)?.name ?? 'Your booking' }}</h2>
-        <p class="badge warn" role="status">Status: Awaiting payment</p>
+      <section v-for="b in awaiting" :key="`pay-${b.id}`" class="card booking" :aria-labelledby="`ph-${b.id}`">
+        <div class="card-head">
+          <h2 :id="`ph-${b.id}`">{{ shopOf(b)?.name ?? 'Your booking' }}</h2>
+          <p class="badge warn" role="status">Status: Awaiting payment</p>
+        </div>
         <dl class="summary">
           <dt>Service</dt><dd>{{ serviceOf(b)?.name ?? 'Service' }} · {{ b.durationMin }} min</dd>
           <dt>When</dt><dd>{{ formatDate(b.start) }}, {{ formatTime(b.start) }}</dd>
           <dt>Deposit due</dt><dd>{{ depositMoney(depositAmountCents(b.priceCents)) }} · about {{ countdown(b.holdExpiresAt, now).text }} left</dd>
         </dl>
         <p class="hint">Not a booking yet: the slot is held until you pay.</p>
-        <div class="row-actions">
+        <div class="row-actions card-actions">
           <router-link class="btn" :to="{ name: 'deposit', params: { requestId: b.id } }">Continue to payment</router-link>
         </div>
       </section>
-      <section v-for="b in bookings" :key="b.id" class="card" :aria-labelledby="`h-${b.id}`">
-        <h2 :id="`h-${b.id}`">{{ shopOf(b)?.name ?? 'Your booking' }}</h2>
-        <p class="badge" role="status">Status: Confirmed</p>
+      <section v-for="b in bookings" :key="b.id" class="card booking" :class="{ acting: action?.id === b.id }" :aria-labelledby="`h-${b.id}`">
+        <div class="card-head">
+          <h2 :id="`h-${b.id}`">{{ shopOf(b)?.name ?? 'Your booking' }}</h2>
+          <p class="badge ok" role="status">Status: Confirmed</p>
+        </div>
         <dl class="summary">
           <dt>Service</dt><dd>{{ serviceOf(b)?.name }} · {{ b.durationMin }} min</dd>
           <dt>Barber</dt><dd>{{ barberOf(b)?.displayName }}</dd>
@@ -416,9 +426,9 @@ async function onMove(b) {
           <dt>Price</dt><dd>{{ money(b.priceCents) }}</dd>
           <dt>Reference</dt><dd>{{ b.id.slice(0, 8).toUpperCase() }}</dd>
         </dl>
-        <p class="hint">{{ policyText(b) }}</p>
+        <p class="hint policy">{{ policyText(b) }}</p>
 
-        <div v-if="action?.id !== b.id" class="row-actions">
+        <div v-if="action?.id !== b.id" class="row-actions card-actions">
           <button class="btn secondary" type="button" :disabled="pending" @click="openMove(b)">Reschedule</button>
           <button class="btn secondary" type="button" :disabled="pending" @click="openCancel(b)">Cancel booking</button>
         </div>
@@ -431,8 +441,8 @@ async function onMove(b) {
             This is inside the {{ windowText(b) }} notice window. You can still cancel, but it will be recorded as a late cancellation against your number.
           </p>
           <p v-else>Cancel this booking? The time is released straight away.</p>
-          <div class="row-actions">
-            <button class="btn" type="button" :disabled="pending || !online" @click="onCancel(b)">
+          <div class="row-actions card-actions">
+            <button class="btn danger" type="button" :disabled="pending || !online" @click="onCancel(b)">
               {{ pending ? 'Cancelling…' : 'Yes, cancel booking' }}
             </button>
             <button class="btn secondary" type="button" :disabled="pending" @click="action = null">Keep booking</button>
@@ -443,28 +453,31 @@ async function onMove(b) {
           <p v-if="isLate(b)" class="banner" role="alert">
             This booking is inside the {{ windowText(b) }} notice window and cannot be moved online.
           </p>
-          <div class="field">
-            <label :for="`date-${b.id}`">New date</label>
-            <select :id="`date-${b.id}`" v-model="move.dateKey">
-              <option v-for="d in dates" :key="d.key" :value="d.key">{{ d.label }}</option>
-            </select>
-          </div>
-          <fieldset :aria-describedby="errors.slot ? 'slot-err' : `slot-hint-${b.id}`">
-            <legend>New time</legend>
+          <fieldset class="step">
+            <legend><span class="step-no" aria-hidden="true">1</span> New date</legend>
+            <div class="picks dates" role="radiogroup" aria-label="New date">
+              <label v-for="d in dates" :key="d.key" class="pick">
+                <input v-model="move.dateKey" type="radio" :name="`date-${b.id}`" :value="d.key" />
+                <span>{{ d.label }}</span>
+              </label>
+            </div>
+          </fieldset>
+          <fieldset class="step" :aria-describedby="errors.slot ? 'slot-err' : `slot-hint-${b.id}`">
+            <legend><span class="step-no" aria-hidden="true">2</span> New time</legend>
             <p :id="`slot-hint-${b.id}`" class="hint" aria-live="polite">
               <template v-if="!move.loaded">Loading times…</template>
               <template v-else-if="!moveSlots.length">No other times available on this date. Try another day.</template>
               <template v-else>Same barber and service. Times update live. Your current time is only replaced when the new one is confirmed.</template>
             </p>
-            <div v-if="moveSlots.length" class="slots" role="radiogroup" aria-label="Available times">
-              <label v-for="s in moveSlots" :key="s" class="slot">
+            <div v-if="moveSlots.length" class="picks times" role="radiogroup" aria-label="Available times">
+              <label v-for="s in moveSlots" :key="s" class="pick">
                 <input v-model="move.start" type="radio" :name="`slot-${b.id}`" :value="s" />
                 <span>{{ formatTime(s) }}</span>
               </label>
             </div>
             <span v-if="errors.slot" id="slot-err" class="error">{{ errors.slot }}</span>
           </fieldset>
-          <div class="row-actions">
+          <div class="row-actions card-actions">
             <button class="btn" type="submit" :disabled="pending || !online || isLate(b)">
               {{ pending ? 'Moving…' : 'Move booking' }}
             </button>
@@ -474,9 +487,88 @@ async function onMove(b) {
       </section>
       </template>
       </div>
+      <button v-if="tab === 'history' && historyAll.length > historyShown" class="btn secondary more" type="button" @click="historyShown += HISTORY_PAGE">
+        Show more
+      </button>
+      </div>
     </template>
 
     <div id="recaptcha-container"></div>
-    <p class="hint">Prototype note: in development the Firebase Auth emulator prints the code in its terminal, and SMS notifications to the shop are mocked.</p>
+    <p class="hint proto-note">Prototype note: in development the Firebase Auth emulator prints the code in its terminal, and SMS notifications to the shop are mocked.</p>
   </main>
 </template>
+
+<style scoped>
+.bookings { padding-bottom: var(--space-6); }
+.page-head { margin-bottom: clamp(1.5rem, 5vw, 2.5rem); }
+.page-head h1 { font-size: clamp(1.9rem, 5vw, 2.75rem); line-height: 1.1; letter-spacing: -0.03em; margin-bottom: var(--space-2); }
+.lede { font-size: 1.1rem; color: var(--color-muted); margin-bottom: var(--space-3); }
+.waitlist-link { font-size: var(--text-sm); color: var(--color-muted); margin: 0; }
+.bookings .banner, .bookings .empty { margin-bottom: var(--space-4); }
+.empty { color: var(--color-muted); padding: var(--space-6) 0; }
+
+/* OTP steps */
+.verify { max-width: 30rem; padding: var(--space-5); box-shadow: 0 8px 28px rgba(30, 43, 42, 0.1); }
+.verify h2 { margin-bottom: var(--space-1); }
+.step-intro { margin-bottom: var(--space-4); }
+.verify input { font-size: 1.15rem; min-height: 52px; }
+.verify .btn { min-width: 8rem; }
+.verify .row-actions { margin-top: var(--space-2); }
+
+/* Tabs: a segmented control; the selected tab is also bold and gets a check, so colour is never the only cue */
+.seg { display: inline-flex; gap: var(--space-1); padding: var(--space-1); background: var(--color-neutral-bg); border-radius: var(--radius-pill); margin-bottom: var(--space-5); }
+.seg-tab {
+  font: inherit; font-weight: 600; min-height: 40px; padding: 0 var(--space-5); border: 2px solid transparent; border-radius: var(--radius-pill);
+  background: transparent; color: var(--color-neutral-fg); cursor: pointer;
+}
+.seg-tab:hover { background: var(--color-tint); }
+.seg-tab[aria-selected='true'] { background: var(--color-surface); border-color: var(--color-accent); color: var(--color-accent-dark); font-weight: 800; box-shadow: var(--shadow-card); }
+.seg-tab[aria-selected='true']::before { content: '\2713\00a0'; }
+
+/* Booking cards */
+.list-grid { display: grid; gap: var(--space-5); align-items: start; }
+.booking { margin-bottom: 0; padding: var(--space-5); }
+.card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-3); margin-bottom: var(--space-4); }
+.card-head h2 { margin: 0; }
+.card-head .badge { margin: 0; padding: 0.2rem var(--space-3); }
+.booking .summary { grid-template-columns: max-content 1fr; gap: var(--space-2) var(--space-5); margin-bottom: var(--space-4); }
+.booking .summary dt { font-weight: 600; color: var(--color-muted); }
+.booking .summary dd { font-weight: 600; }
+.policy { padding-top: var(--space-3); border-top: 1px solid var(--color-line); }
+.booking .hint { margin-bottom: var(--space-4); }
+.booking .banner { margin-bottom: var(--space-3); }
+.card-actions { gap: var(--space-2) var(--space-3); margin-top: var(--space-4); }
+.card-actions .btn { flex: 1 1 9rem; }
+.acting { border-color: var(--color-accent); }
+.more { margin-top: var(--space-5); }
+
+/* Reschedule picker: numbered steps, big tap targets, selected = teal border + tint + check + bold */
+.step { margin: 0 0 var(--space-5); min-width: 0; }
+.step legend { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); padding: 0; }
+.step-no {
+  display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: var(--radius-pill);
+  background: var(--color-tint); color: var(--color-accent-dark); font-size: var(--text-sm); font-weight: 800;
+}
+.picks { display: grid; gap: var(--space-2); }
+.picks.dates { grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr)); }
+.picks.times { grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr)); }
+.pick { position: relative; display: block; }
+.pick input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.pick span {
+  display: flex; align-items: center; justify-content: center; gap: var(--space-1); min-height: 48px; padding: 0 var(--space-3); text-align: center;
+  border: 2px solid var(--color-line); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-text); font-weight: 600;
+}
+.pick input:hover + span { border-color: var(--color-field-border); background: var(--color-tint); }
+.pick input:checked + span { border-color: var(--color-accent); background: var(--color-tint); color: var(--color-accent-dark); font-weight: 800; }
+.pick input:checked + span::before { content: '\2713'; }
+.pick input:focus-visible + span { outline: 3px solid var(--color-focus); outline-offset: 2px; }
+.step .hint { margin-bottom: var(--space-3); }
+
+.proto-note { margin-top: var(--space-6); max-width: 44rem; }
+
+@media (min-width: 900px) {
+  .list-grid { grid-template-columns: repeat(2, 1fr); }
+  .list-grid .acting { grid-column: 1 / -1; }
+  .acting form, .acting .step { max-width: 46rem; }
+}
+</style>

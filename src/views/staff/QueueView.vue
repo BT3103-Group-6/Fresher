@@ -227,24 +227,28 @@ const canStartBooking = (b) => now.value >= b.start - HOUR // matches the server
 </script>
 
 <template>
-  <main>
-    <h1>Queue management</h1>
+  <main class="queue">
+    <header class="page-head">
+      <h1>Queue management</h1>
+      <p class="lede">Who is in the chair, who is next, and who is waiting.</p>
+    </header>
 
     <p v-if="!online" class="banner" role="alert">You appear to be offline. Changes need a connection; your entries are kept.</p>
     <p v-if="loadError" class="banner" role="alert">{{ loadError }}</p>
 
-    <div v-if="ownerMode" class="day-nav">
-      <div class="field">
-        <label for="barber">Barber</label>
-        <select id="barber" v-model="barberId">
-          <option v-for="b in barbers" :key="b.id" :value="b.id">{{ b.displayName }}{{ b.active ? '' : ' (deactivated)' }}</option>
-        </select>
+    <fieldset v-if="ownerMode" class="barber-pick">
+      <legend>Barber</legend>
+      <div class="picks" role="radiogroup" aria-label="Barber">
+        <label v-for="b in barbers" :key="b.id" class="pick">
+          <input v-model="barberId" type="radio" name="barber" :value="b.id" />
+          <span>{{ b.displayName }}{{ b.active ? '' : ' (deactivated)' }}</span>
+        </label>
       </div>
-    </div>
+    </fieldset>
     <p v-if="ownerMode && loaded.barbers && !barbers.length" class="hint">This shop has no barbers yet. Add one in Shop configuration.</p>
 
     <template v-else>
-      <p class="hint" role="status">
+      <p class="hint summary-line" role="status">
         <template v-if="!ready">Loading…</template>
         <template v-else>
           {{ ownerMode && barberName ? `${barberName}: ` : '' }}{{ nowServing.length ? 'someone is in service' : 'nobody in service' }} ·
@@ -252,12 +256,13 @@ const canStartBooking = (b) => now.value >= b.start - HOUR // matches the server
           {{ upcoming.length }} upcoming {{ upcoming.length === 1 ? 'booking' : 'bookings' }}. All times are Singapore time.
         </template>
       </p>
-      <p class="hint">
+      <p class="hint mock-note">
         Delay warnings are sent by a <strong>mock</strong> provider in this prototype: they are logged, and no real SMS is sent.
         A booking's time is never changed automatically.
       </p>
 
       <section aria-labelledby="serving-h">
+        <div class="comb-rule" aria-hidden="true"></div>
         <h2 id="serving-h">In service now</h2>
         <ul class="timeline">
           <li v-for="s in nowServing" :key="s.id" class="confirmed">
@@ -272,11 +277,12 @@ const canStartBooking = (b) => now.value >= b.start - HOUR // matches the server
             </div>
             <p v-if="rowErrors[s.id]" class="meta" role="alert"><span class="badge warn">Not saved</span> {{ rowErrors[s.id] }}</p>
           </li>
-          <li v-if="ready && !nowServing.length">Nobody is in service.</li>
+          <li v-if="ready && !nowServing.length" class="empty">Nobody is in service.</li>
         </ul>
       </section>
 
       <section aria-labelledby="upcoming-h">
+        <div class="comb-rule" aria-hidden="true"></div>
         <h2 id="upcoming-h">Upcoming bookings</h2>
         <p class="hint">
           Projected delay comes from the service in progress and the bookings before it, using each booking's actual start and finish.
@@ -301,11 +307,12 @@ const canStartBooking = (b) => now.value >= b.start - HOUR // matches the server
             </div>
             <p v-if="rowErrors[u.id]" class="meta" role="alert"><span class="badge warn">Not saved</span> {{ rowErrors[u.id] }}</p>
           </li>
-          <li v-if="ready && !upcoming.length">No upcoming bookings for this barber.</li>
+          <li v-if="ready && !upcoming.length" class="empty">No upcoming bookings for this barber.</li>
         </ul>
       </section>
 
       <section aria-labelledby="queue-h">
+        <div class="comb-rule" aria-hidden="true"></div>
         <h2 id="queue-h">Walk-in queue</h2>
         <p class="hint">Bookings come first. The wait shown for each walk-in is an estimate around the bookings above.</p>
         <ol class="timeline">
@@ -331,31 +338,125 @@ const canStartBooking = (b) => now.value >= b.start - HOUR // matches the server
             </div>
             <p v-if="rowErrors[w.id]" class="meta" role="alert"><span class="badge warn">Not saved</span> {{ rowErrors[w.id] }}</p>
           </li>
-          <li v-if="ready && !waiting.length">No walk-ins waiting.</li>
+          <li v-if="ready && !waiting.length" class="empty">No walk-ins waiting.</li>
         </ol>
 
-        <h3 id="add-h">Add a walk-in</h3>
-        <p v-if="formError" class="banner" role="alert">{{ formError }}</p>
-        <form novalidate aria-labelledby="add-h" @submit.prevent="onAdd">
-          <div class="form-grid">
-            <div class="field">
-              <label for="w-name">Name</label>
-              <input id="w-name" v-model="form.name" type="text" maxlength="60" autocomplete="off" :aria-invalid="!!errors.name"
-                :aria-describedby="errors.name ? 'w-name-err' : undefined" />
-              <span v-if="errors.name" id="w-name-err" class="error">{{ errors.name }}</span>
-            </div>
-            <div class="field">
-              <label for="w-service">Service</label>
-              <select id="w-service" v-model="form.serviceId" :aria-invalid="!!errors.service" :aria-describedby="errors.service ? 'w-service-err' : undefined">
-                <option value="" disabled>Choose a service</option>
-                <option v-for="s in offered" :key="s.id" :value="s.id">{{ s.name }} ({{ s.durationMin }} min)</option>
-              </select>
-              <span v-if="errors.service" id="w-service-err" class="error">{{ errors.service }}</span>
-            </div>
+        <form class="card add-form" novalidate aria-labelledby="add-h" @submit.prevent="onAdd">
+          <h3 id="add-h">Add a walk-in</h3>
+          <p v-if="formError" class="banner" role="alert">{{ formError }}</p>
+          <div class="field">
+            <label for="w-name"><span class="step-no" aria-hidden="true">1</span> Name</label>
+            <input id="w-name" v-model="form.name" type="text" maxlength="60" autocomplete="off" :aria-invalid="!!errors.name"
+              :aria-describedby="errors.name ? 'w-name-err' : undefined" />
+            <span v-if="errors.name" id="w-name-err" class="error">{{ errors.name }}</span>
           </div>
+          <fieldset class="step" :aria-describedby="errors.service ? 'w-service-err' : undefined">
+            <legend><span class="step-no" aria-hidden="true">2</span> Service</legend>
+            <p v-if="!offered.length" class="hint">This barber has no services to offer yet.</p>
+            <div class="options" role="radiogroup" aria-label="Service">
+              <label v-for="s in offered" :key="s.id" class="option">
+                <input v-model="form.serviceId" type="radio" name="w-service" :value="s.id" />
+                <span class="option-body">
+                  <span class="option-name">{{ s.name }}</span>
+                  <span class="option-meta">{{ s.durationMin }} min</span>
+                </span>
+              </label>
+            </div>
+            <span v-if="errors.service" id="w-service-err" class="error">{{ errors.service }}</span>
+          </fieldset>
           <button class="btn" type="submit" :disabled="adding || !online">{{ adding ? 'Adding…' : 'Add to queue' }}</button>
         </form>
       </section>
     </template>
   </main>
 </template>
+
+<style scoped>
+.queue { padding-bottom: var(--space-6); }
+.page-head { margin-bottom: clamp(1.5rem, 5vw, 2.5rem); }
+.page-head h1 { font-size: clamp(1.9rem, 5vw, 2.75rem); line-height: 1.1; letter-spacing: -0.03em; margin-bottom: var(--space-2); }
+.lede { font-size: 1.1rem; color: var(--color-muted); max-width: 36rem; }
+.comb-rule {
+  width: 3.5rem; height: 0.9rem; margin-bottom: var(--space-3);
+  background: repeating-linear-gradient(115deg, var(--color-accent) 0 3px, transparent 3px 11px);
+  opacity: 0.55;
+}
+.queue .banner { margin-bottom: var(--space-4); }
+.queue section { margin-bottom: clamp(2.5rem, 7vw, 4rem); }
+.queue h2 { font-size: clamp(1.3rem, 3vw, 1.7rem); margin-bottom: var(--space-2); }
+.queue section > .hint { max-width: 40rem; margin-bottom: var(--space-4); }
+.summary-line { margin-bottom: var(--space-2); }
+.mock-note { margin-bottom: clamp(2rem, 6vw, 3rem); max-width: 40rem; }
+
+.barber-pick { border: 0; padding: 0; margin: 0 0 var(--space-5); min-width: 0; }
+.barber-pick legend { padding: 0; margin-bottom: var(--space-2); }
+/* Selectable chips: selected = teal border + tint + check mark + bold, so colour is never the only cue */
+.picks { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.pick { position: relative; display: block; }
+.pick input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.pick span {
+  display: flex; align-items: center; justify-content: center; gap: var(--space-1); min-height: 44px; padding: 0 var(--space-4);
+  border: 2px solid var(--color-line); border-radius: var(--radius-pill); background: var(--color-surface); font-weight: 600;
+}
+.pick input:hover + span { border-color: var(--color-field-border); background: var(--color-tint); }
+.pick input:checked + span { border-color: var(--color-accent); background: var(--color-tint); color: var(--color-accent-dark); font-weight: 800; }
+.pick input:checked + span::before { content: '\2713'; }
+.pick input:focus-visible + span { outline: 3px solid var(--color-focus); outline-offset: 2px; }
+
+/* Cards: solid rail = on time or in service, dashed = delayed; each also has a text badge */
+.timeline { display: grid; gap: var(--space-3); margin-bottom: var(--space-5); }
+.timeline > li {
+  margin: 0; padding: var(--space-4) var(--space-5); background: var(--color-surface); border: 1px solid var(--color-line);
+  border-left-width: 6px; border-radius: var(--radius-lg); box-shadow: var(--shadow-card);
+}
+.timeline > li.empty { color: var(--color-muted); background: transparent; border: 0; box-shadow: none; padding: var(--space-3) 0; }
+.timeline .when { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); font-size: var(--text-lg); margin: 0 0 var(--space-1); }
+.timeline .when .badge { font-size: var(--text-xs); }
+.timeline .meta { margin: 0 0 var(--space-1); }
+.timeline .row-actions { gap: var(--space-2) var(--space-3); margin-top: var(--space-3); align-items: center; }
+.timeline .row-actions .btn { min-width: 8rem; }
+.timeline > li > p[role='alert'] { margin-top: var(--space-3); }
+ol.timeline { list-style: none; padding: 0; }
+
+/* Add a walk-in */
+.add-form { max-width: 40rem; padding: var(--space-5); box-shadow: 0 8px 28px rgba(30, 43, 42, 0.1); }
+.add-form h3 { font-size: var(--text-lg); margin-bottom: var(--space-4); }
+.add-form .field { margin-bottom: var(--space-5); }
+.add-form input[type='text'] { font-size: 1.1rem; min-height: 52px; }
+.add-form > .btn { width: 100%; }
+.step { border: 0; padding: 0; margin: 0 0 var(--space-5); min-width: 0; }
+.step legend, .add-form label:first-child { display: flex; align-items: center; gap: var(--space-2); }
+.step legend { padding: 0; margin-bottom: var(--space-3); }
+.step-no {
+  display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: var(--radius-pill);
+  background: var(--color-tint); color: var(--color-accent-dark); font-size: var(--text-sm); font-weight: 800;
+}
+.step .error { display: block; margin-top: var(--space-2); }
+.options { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: var(--space-2); }
+.option { position: relative; display: block; }
+.option input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.option-body {
+  position: relative; display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: 56px;
+  padding: var(--space-2) var(--space-4) var(--space-2) 2.6rem; border: 2px solid var(--color-line); border-radius: var(--radius-md); background: var(--color-surface);
+}
+.option-body::before {
+  content: ''; position: absolute; left: var(--space-3); top: 50%; width: 1.15rem; height: 1.15rem; margin-top: -0.575rem;
+  border: 2px solid var(--color-field-border); border-radius: var(--radius-pill); background: var(--color-surface);
+}
+.option-name { font-weight: 700; }
+.option-meta { font-size: var(--text-sm); color: var(--color-muted); white-space: nowrap; }
+.option input:hover + .option-body { border-color: var(--color-field-border); background: var(--color-tint); }
+.option input:checked + .option-body { border-color: var(--color-accent); background: var(--color-tint); }
+.option input:checked + .option-body::before { content: '\2713'; display: flex; align-items: center; justify-content: center; border-color: var(--color-accent); background: var(--color-accent); color: var(--color-surface); font-size: 0.8rem; font-weight: 800; }
+.option input:checked + .option-body .option-name { font-weight: 800; color: var(--color-accent-dark); }
+.option input:focus-visible + .option-body { outline: 3px solid var(--color-focus); outline-offset: 2px; }
+
+@media (max-width: 480px) {
+  .timeline > li { padding: var(--space-4); }
+  .timeline .row-actions .btn { flex: 1 1 8rem; }
+  .add-form { padding: var(--space-4); }
+}
+@media (min-width: 900px) {
+  .timeline { max-width: 52rem; }
+}
+</style>

@@ -51,20 +51,21 @@ async function onSubmit() {
 </script>
 
 <template>
-  <main>
-    <template v-if="session.user && !isStaff()">
-      <h1>Not authorised</h1>
+  <main class="signin">
+    <section v-if="session.user && !isStaff()" class="card panel" aria-labelledby="na-h">
+      <h1 id="na-h">Not authorised</h1>
       <p class="banner" role="alert">
         The staff area is for shop owners and barbers. You are signed in as
         {{ session.user.email ?? session.user.phoneNumber }}, which is not a staff account.
       </p>
       <button class="btn" type="button" @click="onSignOut">Sign out</button>
-    </template>
-    <template v-else>
-    <h1>Staff sign in</h1>
+    </section>
+    <section v-else class="panel" aria-labelledby="si-h">
+    <h1 id="si-h">Staff sign in</h1>
+    <p class="lede">For shop owners and barbers. Customers do not need an account.</p>
     <p v-if="formError" class="banner" role="alert">{{ formError }}</p>
 
-    <form novalidate @submit.prevent="onSubmit">
+    <form class="card" novalidate @submit.prevent="onSubmit">
       <div class="field">
         <label for="email">Email</label>
         <input id="email" v-model="email" type="email" autocomplete="username"
@@ -80,9 +81,24 @@ async function onSubmit() {
       <button class="btn" type="submit" :disabled="pending">{{ pending ? 'Signing in…' : 'Sign in' }}</button>
     </form>
 
-    <p v-if="isDev" class="hint">
+    <p v-if="isDev" class="hint dev">
       Dev accounts (run <code>npm run seed</code>): owner@shop-jurong.example.com, password123.
     </p>
-    </template>
+    </section>
   </main>
 </template>
+
+<style scoped>
+.signin { padding: var(--space-5) 0 var(--space-6); }
+.panel { max-width: 28rem; }
+.card.panel { padding: var(--space-5); box-shadow: 0 8px 28px rgba(30, 43, 42, 0.1); }
+h1 { font-size: clamp(1.9rem, 5vw, 2.75rem); line-height: 1.1; letter-spacing: -0.03em; margin-bottom: var(--space-2); }
+.lede { font-size: 1.1rem; color: var(--color-muted); margin-bottom: var(--space-5); }
+form.card { padding: var(--space-5); box-shadow: 0 8px 28px rgba(30, 43, 42, 0.1); margin-bottom: var(--space-4); }
+.field { margin-bottom: var(--space-4); }
+input { font-size: 1.1rem; min-height: 52px; }
+form .btn { width: 100%; margin-top: var(--space-2); }
+.panel > .banner { margin-bottom: var(--space-4); }
+.card.panel .btn { min-width: 8rem; }
+.dev { max-width: 28rem; }
+</style>

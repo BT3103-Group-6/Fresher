@@ -175,35 +175,44 @@ async function onChooseAnother() {
 </script>
 
 <template>
-  <main>
+  <main class="verify">
     <template v-if="step === 'done'">
-      <h1>Booking confirmed</h1>
-      <p class="badge" role="status">Status: Confirmed</p>
-      <dl class="summary">
-        <dt>Shop</dt><dd>{{ shop?.name }}</dd>
-        <dt>Service</dt><dd>{{ service?.name }} · {{ confirmed.durationMin }} min</dd>
-        <dt>Barber</dt><dd>{{ barber?.displayName }}</dd>
-        <dt>When</dt><dd>{{ formatDate(confirmed.start) }}, {{ formatTime(confirmed.start) }}</dd>
-        <dt>Price</dt><dd>{{ money(confirmed.priceCents) }}</dd>
-        <dt>Booked for</dt><dd>{{ draft.name.trim() }}</dd>
-        <dt>Reference</dt><dd>{{ confirmed.requestId.slice(0, 8).toUpperCase() }}</dd>
-      </dl>
-      <p class="hint">{{ noticeText }}</p>
-      <p class="hint">Prototype note: SMS reminders are mocked, so no confirmation text is sent.</p>
-      <p><router-link :to="{ name: 'my-bookings' }">Manage my bookings</router-link></p>
+      <header class="page-head">
+        <p class="badge ok" role="status"><span aria-hidden="true">✓ </span>Status: Confirmed</p>
+        <h1>Booking confirmed</h1>
+        <p class="lede">See you soon. Your details are below.</p>
+      </header>
+      <section class="card panel" aria-labelledby="done-h">
+        <h2 id="done-h">Your appointment</h2>
+        <dl class="summary">
+          <dt>Shop</dt><dd>{{ shop?.name }}</dd>
+          <dt>Service</dt><dd>{{ service?.name }} · {{ confirmed.durationMin }} min</dd>
+          <dt>Barber</dt><dd>{{ barber?.displayName }}</dd>
+          <dt>When</dt><dd>{{ formatDate(confirmed.start) }}, {{ formatTime(confirmed.start) }}</dd>
+          <dt>Price</dt><dd>{{ money(confirmed.priceCents) }}</dd>
+          <dt>Booked for</dt><dd>{{ draft.name.trim() }}</dd>
+          <dt>Reference</dt><dd class="ref">{{ confirmed.requestId.slice(0, 8).toUpperCase() }}</dd>
+        </dl>
+        <p class="policy">{{ noticeText }}</p>
+      </section>
+      <p class="hint note">Prototype note: SMS reminders are mocked, so no confirmation text is sent.</p>
+      <p class="after"><router-link class="btn" :to="{ name: 'my-bookings' }">Manage my bookings</router-link></p>
     </template>
 
     <template v-else>
-      <h1>Verify and confirm</h1>
+      <header class="page-head">
+        <h1>Verify and confirm</h1>
+        <p class="lede">Check your booking, then confirm your mobile number with a text code.</p>
+      </header>
 
-      <p v-if="expired" class="banner" role="alert">
-        Your 10-minute hold has expired.
+      <div v-if="expired" class="banner" role="alert">
+        <p>Your 10-minute hold has expired.</p>
         <button type="button" class="btn secondary" @click="onChooseAnother">Choose a time again</button>
-      </p>
+      </div>
       <p v-if="!online" class="banner" role="alert">You appear to be offline. Your details are kept; reconnect to continue.</p>
       <p v-if="formError" class="banner" role="alert">{{ formError }}</p>
 
-      <section class="card" aria-labelledby="summary-h">
+      <section class="card panel" aria-labelledby="summary-h">
         <h2 id="summary-h">Your booking</h2>
         <dl class="summary">
           <dt>Shop</dt><dd>{{ shop?.name }}</dd>
@@ -212,13 +221,14 @@ async function onChooseAnother() {
           <dt>When</dt><dd>{{ formatDate(hold.start) }}, {{ formatTime(hold.start) }}</dd>
           <dt>Price</dt><dd>{{ money(hold.priceCents) }}</dd>
         </dl>
-        <p class="hint">{{ noticeText }}</p>
+        <p class="policy"><strong>Cancellation.</strong> {{ noticeText }}</p>
         <p class="hold" :class="{ low: remainingMs < 60000 }" role="timer">
-          Slot held for {{ countdown }}
+          <span aria-hidden="true">⏱ </span>Slot held for <strong>{{ countdown }}</strong><span v-if="remainingMs < 60000"> · running out</span>
         </p>
       </section>
 
-      <form v-if="step === 'details'" novalidate @submit.prevent="onSendCode">
+      <form v-if="step === 'details'" class="card panel" novalidate aria-labelledby="details-h" @submit.prevent="onSendCode">
+        <h2 id="details-h"><span class="step-no" aria-hidden="true">1</span>Your details</h2>
         <div class="field">
           <label for="name">Your name</label>
           <input id="name" v-model="draft.name" type="text" autocomplete="name" maxlength="80"
@@ -233,21 +243,22 @@ async function onChooseAnother() {
           <span v-if="errors.phone" id="phone-err" class="error">{{ errors.phone }}</span>
           <span v-else id="phone-hint" class="hint">We send a 6-digit code by SMS to verify it. No password needed.</span>
         </div>
-        <button class="btn" type="submit" :disabled="pending || expired || !online">
+        <button class="btn wide-btn" type="submit" :disabled="pending || expired || !online">
           {{ pending ? 'Sending code…' : 'Send code' }}
         </button>
       </form>
 
-      <form v-else novalidate @submit.prevent="onConfirm">
-        <p>We sent a code to {{ draft.phone }}.</p>
+      <form v-else class="card panel" novalidate aria-labelledby="code-h" @submit.prevent="onConfirm">
+        <h2 id="code-h"><span class="step-no" aria-hidden="true">2</span>Enter your code</h2>
+        <p class="sent">We sent a code to <strong>{{ draft.phone }}</strong>.</p>
         <div v-if="!verified" class="field">
           <label for="code">6-digit code</label>
-          <input id="code" v-model="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6"
+          <input id="code" v-model="code" class="code-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6"
             :aria-invalid="!!errors.code" :aria-describedby="errors.code ? 'code-err' : undefined" />
           <span v-if="errors.code" id="code-err" class="error">{{ errors.code }}</span>
         </div>
-        <p v-else class="badge" role="status">Number verified</p>
-        <div class="row-actions">
+        <p v-else class="badge ok verified" role="status"><span aria-hidden="true">✓ </span>Number verified</p>
+        <div class="actions">
           <button class="btn" type="submit" :disabled="pending || expired || !online">
             {{ pending ? 'Confirming…' : 'Confirm booking' }}
           </button>
@@ -258,8 +269,53 @@ async function onChooseAnother() {
       </form>
 
       <div id="recaptcha-container"></div>
-      <p class="hint">Prototype note: in development, the Firebase Auth emulator prints the code in its terminal; SMS is not really sent.</p>
-      <p><button type="button" class="btn secondary" @click="onChooseAnother">Choose a different time</button></p>
+      <p class="hint note">Prototype note: in development, the Firebase Auth emulator prints the code in its terminal; SMS is not really sent.</p>
+      <p class="after"><button type="button" class="btn secondary" @click="onChooseAnother">Choose a different time</button></p>
     </template>
   </main>
 </template>
+
+<style scoped>
+.lede { font-size: 1.1rem; color: var(--color-muted); max-width: 34rem; }
+.page-head { margin-bottom: var(--space-5); padding-top: var(--space-3); }
+.page-head h1 { font-size: clamp(1.9rem, 6vw, 2.8rem); line-height: 1.1; letter-spacing: -0.03em; margin-bottom: var(--space-2); }
+.page-head .badge { margin-bottom: var(--space-3); }
+
+.panel { padding: var(--space-4) var(--space-4) var(--space-5); margin-bottom: var(--space-5); }
+.panel h2 { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); }
+.step-no {
+  display: inline-grid; place-items: center; width: 1.75rem; height: 1.75rem; border-radius: var(--radius-pill);
+  background: var(--color-tint); color: var(--color-accent-dark); font-size: var(--text-sm); font-weight: 800;
+}
+.banner p + .btn { margin-top: var(--space-3); }
+
+.summary { gap: var(--space-3) var(--space-5); margin-bottom: var(--space-4); }
+.summary dt { color: var(--color-muted); font-weight: 600; }
+.summary dd { font-weight: 700; }
+.summary .ref { font-variant-numeric: tabular-nums; letter-spacing: 0.06em; }
+.policy { padding-top: var(--space-4); border-top: 1px solid var(--color-line); color: var(--color-muted); font-size: var(--text-sm); }
+.policy strong { color: var(--color-text); }
+.hold {
+  display: inline-block; margin-top: var(--space-4); padding: var(--space-2) var(--space-4); border-radius: var(--radius-pill);
+  background: var(--color-tint); color: var(--color-accent-dark); font-variant-numeric: tabular-nums;
+}
+.hold.low { background: var(--color-danger-bg); color: var(--color-danger-fg); }
+
+.panel .field { margin-bottom: var(--space-4); }
+.panel input { min-height: 52px; font-size: 1.1rem; }
+.code-input { letter-spacing: 0.3em; font-variant-numeric: tabular-nums; }
+.sent { margin-bottom: var(--space-4); }
+.verified { margin-bottom: var(--space-4); font-size: var(--text-sm); padding: var(--space-1) var(--space-3); }
+.wide-btn { width: 100%; min-height: 52px; }
+.actions { display: grid; gap: var(--space-2); }
+.actions .btn { min-height: 52px; }
+.note { margin-bottom: var(--space-4); }
+.after { margin-bottom: var(--space-6); }
+
+@media (min-width: 720px) {
+  .panel { padding: var(--space-5) var(--space-5) var(--space-6); }
+  .wide-btn { width: auto; min-width: 14rem; }
+  .actions { display: flex; }
+  .actions .btn { min-width: 12rem; }
+}
+</style>
