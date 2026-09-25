@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Fresher is a multi-shop barber booking app (Vue 3 + Vite frontend; Firebase Auth, Firestore, Cloud Functions, Security Rules, App Check, Hosting). It is a student prototype (BT3103). The foundation exists (`src/firebase.js` emulator wiring, real `firestore.rules`, `scripts/seed.mjs`, `tests/rules.test.mjs`), but there are no screens yet (`src/` components are still the Vue template) and `functions/index.js` is the Firebase stub. Most of the architecture below is design to build toward.
+Fresher is a multi-shop barber booking app (Vue 3 + Vite frontend; Firebase Auth, Firestore, Cloud Functions, Security Rules, App Check, Hosting). It is a student prototype (BT3103). The foundation exists (`src/firebase.js` emulator wiring, real `firestore.rules`, `scripts/seed.mjs`, `tests/rules.test.mjs`), and FR-06/FR-07 exist (staff sign-in, UI-O1 shop configuration in `src/views/staff/`, Vue Router guard in `src/router/`, `addBarber` in `functions/index.js`). No customer screens or other callable functions yet; the starter template components remain unused. Most of the architecture below is design to build toward.
 
 ## Commands
 
@@ -20,7 +20,6 @@ npm run test:rules   # Security Rules tests (node --test) against the already-ru
 ```
 
 - Never start emulators from a session: they are expected to be running already in the user's terminal. They need JDK 21+. Copy `.env.example` to `.env.local` for the `VITE_FIREBASE_*` values (placeholders are fine in dev).
-- `functions/` lint currently fails on the untouched starter stub in `functions/index.js`.
 - The only automated tests are the rules tests. Run the narrowest relevant build, lint or rules test after changes. Concurrency tests (NFR-03/05) are meant to run against the Firestore emulator with scripted concurrent calls.
 - Node: root `^22.18.0 || >=24.12.0`; `functions/` uses Node 24.
 - Use the emulators for development. Do not deploy or touch production services.

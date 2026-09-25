@@ -24,6 +24,7 @@ Status key: PROPOSED (default in use, needs group approval) · AGREED (confirmed
 - Repeat access (history, changes): fresh OTP on the booking's mobile number.
 - Mobile number changes: not supported in the prototype (a new number is a new customer).
 - Staff: email/password. Google sign-in enabled in Firebase but OPEN whether to offer it in the UI.
+- Barber login: `addBarber` creates it from an owner-set temporary password (min 8 chars). UI-O1 is owner-only.
 - Development: use Firebase test phone numbers; the Auth emulator prints OTP codes in the terminal.
 
 ## A3 Booking rules — PROPOSED
@@ -93,3 +94,6 @@ Status key: PROPOSED (default in use, needs group approval) · AGREED (confirmed
 | 2026-09-25 | A1 | Shop self-registration recorded as OPEN; shops created by seed/functions only | pending |
 | 2026-09-25 | A2 | Barber custom claims include `barberId`: `{ shopId, role, barberId }` | pending |
 | 2026-09-25 | architecture | `shopId` added to `notifications` and `deposits`; `confirmBooking` copies `customerName` and masked phone onto appointments | pending |
+| 2026-09-25 | A2 | `addBarber` takes an owner-set temporary password (min 8 chars) and creates the barber's email/password login; no email is sent in the prototype | pending |
+| 2026-09-25 | A2 | UI-O1 Shop configuration is owner-only; barbers are shown "not authorised" | pending |
+| 2026-09-25 | architecture | `addBarber` does not write `auditLog`; `auditLog` is for booking state changes only (NFR-08) | pending |

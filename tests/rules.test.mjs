@@ -16,6 +16,7 @@ const customer = (uid) => env.authenticatedContext(uid).firestore()
 const anon = () => env.unauthenticatedContext().firestore()
 
 const service = { name: 'Cut', durationMin: 30, priceCents: 2500, active: true }
+const barberDoc = { displayName: 'Ali', active: true, serviceIds: ['s1'], workingHours: { mon: [{ start: '09:00', end: '18:00' }] } }
 
 before(async () => {
   env = await initializeTestEnvironment({
@@ -32,6 +33,7 @@ beforeEach(async () => {
     for (const [id, status] of [['a', 'verified'], ['b', 'verified'], ['p', 'pending']]) {
       await setDoc(doc(db, `shops/${id}`), { name: id, status, tz: 'Asia/Singapore' })
       await setDoc(doc(db, `shops/${id}/services/s1`), service)
+      await setDoc(doc(db, `shops/${id}/barbers/b1`), barberDoc)
       await setDoc(doc(db, `shops/${id}/schedules/x_20260101`), { intervals: [] })
     }
     await setDoc(doc(db, 'appointments/apt1'), { shopId: 'a', barberId: 'b1', customerId: 'cust1' })
@@ -46,11 +48,13 @@ describe('public reads', () => {
   it('lets anyone read verified shops, services and schedules', async () => {
     await assertSucceeds(getDoc(doc(anon(), 'shops/a')))
     await assertSucceeds(getDoc(doc(anon(), 'shops/a/services/s1')))
+    await assertSucceeds(getDoc(doc(anon(), 'shops/a/barbers/b1')))
     await assertSucceeds(getDoc(doc(anon(), 'shops/a/schedules/x_20260101')))
   })
   it('hides pending shops and their data from the public', async () => {
     await assertFails(getDoc(doc(anon(), 'shops/p')))
     await assertFails(getDoc(doc(anon(), 'shops/p/services/s1')))
+    await assertFails(getDoc(doc(anon(), 'shops/p/barbers/b1')))
     await assertSucceeds(getDoc(doc(owner('p'), 'shops/p')))
   })
 })
@@ -115,6 +119,32 @@ describe('shop configuration writes', () => {
     await assertFails(setDoc(doc(db, 'shops/a/services/s2'), { ...service, priceCents: -1 }))
     await assertFails(setDoc(doc(db, 'shops/a/services/s2'), { ...service, name: '' }))
     await assertFails(setDoc(doc(db, 'shops/a/services/s2'), { ...service, extra: true }))
+  })
+  it('owner deactivates and reactivates a service', async () => {
+    await assertSucceeds(updateDoc(doc(owner('a'), 'shops/a/services/s1'), { active: false }))
+    await assertSucceeds(updateDoc(doc(owner('a'), 'shops/a/services/s1'), { active: true }))
+    await assertFails(updateDoc(doc(owner('b'), 'shops/a/services/s1'), { active: false }))
+  })
+  it('owner edits and deactivates barbers in own shop only', async () => {
+    await assertSucceeds(updateDoc(doc(owner('a'), 'shops/a/barbers/b1'), { active: false }))
+    await assertSucceeds(updateDoc(doc(owner('a'), 'shops/a/barbers/b1'), { active: true }))
+    await assertSucceeds(updateDoc(doc(owner('a'), 'shops/a/barbers/b1'), { displayName: 'Ali B', serviceIds: [] }))
+    await assertFails(updateDoc(doc(owner('b'), 'shops/a/barbers/b1'), { active: false }))
+    await assertFails(updateDoc(doc(barber('a'), 'shops/a/barbers/b1'), { active: false }))
+    await assertFails(updateDoc(doc(customer('cust1'), 'shops/a/barbers/b1'), { active: false }))
+    await assertFails(updateDoc(doc(anon(), 'shops/a/barbers/b1'), { active: false }))
+  })
+  it('rejects invalid barber updates', async () => {
+    const ref = () => doc(owner('a'), 'shops/a/barbers/b1')
+    await assertFails(updateDoc(ref(), { active: 'no' }))
+    await assertFails(updateDoc(ref(), { serviceIds: 's1' }))
+    await assertFails(updateDoc(ref(), { workingHours: 'always' }))
+    await assertFails(updateDoc(ref(), { displayName: 42 }))
+    await assertFails(updateDoc(ref(), { extra: true }))
+  })
+  it('clients cannot create or delete barbers (addBarber does that)', async () => {
+    await assertFails(setDoc(doc(owner('a'), 'shops/a/barbers/b2'), barberDoc))
+    await assertFails(deleteDoc(doc(owner('a'), 'shops/a/barbers/b1')))
   })
   it('owner edits profile but not status; admin edits only status', async () => {
     await assertSucceeds(updateDoc(doc(owner('a'), 'shops/a'), { noticeMins: 60 }))
