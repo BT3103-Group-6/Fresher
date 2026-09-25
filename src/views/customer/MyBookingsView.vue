@@ -508,7 +508,7 @@ async function onMove(b) {
 .empty { color: var(--color-muted); padding: var(--space-6) 0; }
 
 /* OTP steps */
-.verify { max-width: 30rem; padding: var(--space-5); box-shadow: 0 8px 28px rgba(30, 43, 42, 0.1); }
+.verify { max-width: 30rem; padding: var(--space-5); box-shadow: var(--shadow-raised); }
 .verify h2 { margin-bottom: var(--space-1); }
 .step-intro { margin-bottom: var(--space-4); }
 .verify input { font-size: 1.15rem; min-height: 52px; }

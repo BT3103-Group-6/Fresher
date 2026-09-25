@@ -91,10 +91,10 @@ async function onSubmit() {
 <style scoped>
 .signin { padding: var(--space-5) 0 var(--space-6); }
 .panel { max-width: 28rem; }
-.card.panel { padding: var(--space-5); box-shadow: 0 8px 28px rgba(30, 43, 42, 0.1); }
+.card.panel { padding: var(--space-5); box-shadow: var(--shadow-raised); }
 h1 { font-size: clamp(1.9rem, 5vw, 2.75rem); line-height: 1.1; letter-spacing: -0.03em; margin-bottom: var(--space-2); }
 .lede { font-size: 1.1rem; color: var(--color-muted); margin-bottom: var(--space-5); }
-form.card { padding: var(--space-5); box-shadow: 0 8px 28px rgba(30, 43, 42, 0.1); margin-bottom: var(--space-4); }
+form.card { padding: var(--space-5); box-shadow: var(--shadow-raised); margin-bottom: var(--space-4); }
 .field { margin-bottom: var(--space-4); }
 input { font-size: 1.1rem; min-height: 52px; }
 form .btn { width: 100%; margin-top: var(--space-2); }

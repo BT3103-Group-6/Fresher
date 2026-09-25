@@ -184,11 +184,6 @@ const tiles = computed(() => {
 .page-head { margin-bottom: clamp(1.5rem, 5vw, 2.5rem); }
 .page-head h1 { font-size: clamp(1.9rem, 5vw, 2.75rem); line-height: 1.1; letter-spacing: -0.03em; margin-bottom: var(--space-2); }
 .lede { font-size: 1.1rem; color: var(--color-muted); max-width: 36rem; }
-.comb-rule {
-  width: 3.5rem; height: 0.9rem; margin-bottom: var(--space-3);
-  background: repeating-linear-gradient(115deg, var(--color-accent) 0 3px, transparent 3px 11px);
-  opacity: 0.55;
-}
 .dashboard .banner { margin-bottom: var(--space-4); }
 .dashboard .banner .btn { margin-left: var(--space-2); }
 .dashboard section { margin-bottom: clamp(2.5rem, 7vw, 4rem); }

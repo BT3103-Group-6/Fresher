@@ -253,7 +253,7 @@ function slotText(shop) {
 .hero-motif { position: absolute; z-index: 0; top: -1.5rem; right: -3rem; width: 15rem; color: var(--color-tint); pointer-events: none; }
 .hero h1 { font-size: clamp(2.2rem, 7vw, 4rem); line-height: 1.08; letter-spacing: -0.03em; max-width: 14ch; margin-bottom: var(--space-3); }
 
-.search { max-width: 34rem; padding: var(--space-4); box-shadow: 0 8px 28px rgba(30, 43, 42, 0.1); margin-bottom: 0; }
+.search { max-width: 34rem; padding: var(--space-4); box-shadow: var(--shadow-raised); margin-bottom: 0; }
 .search .field { margin-bottom: var(--space-3); }
 .search input { font-size: 1.15rem; min-height: 52px; }
 .search-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); margin-bottom: var(--space-4); }
@@ -270,11 +270,6 @@ function slotText(shop) {
 .chip:disabled { opacity: 0.6; cursor: not-allowed; }
 .chip[aria-pressed='true'], .chip[aria-pressed='true']:hover { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-surface); }
 
-.comb-rule {
-  width: 3.5rem; height: 0.9rem; margin-bottom: var(--space-3);
-  background: repeating-linear-gradient(115deg, var(--color-accent) 0 3px, transparent 3px 11px);
-  opacity: 0.55;
-}
 
 .shops { display: grid; gap: var(--space-4); }
 .shops .card { margin-bottom: 0; }

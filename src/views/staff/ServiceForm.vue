@@ -104,7 +104,7 @@ async function onSubmit() {
 </template>
 
 <style scoped>
-.editor { padding: var(--space-5); margin-bottom: var(--space-4); max-width: 34rem; border-color: var(--color-accent); box-shadow: 0 8px 28px rgba(30, 43, 42, 0.1); }
+.editor { padding: var(--space-5); margin-bottom: var(--space-4); max-width: 34rem; border-color: var(--color-accent); box-shadow: var(--shadow-raised); }
 .editor h3 { font-size: var(--text-lg); margin-bottom: var(--space-4); }
 .field { margin-bottom: var(--space-4); }
 .editor .banner { margin-bottom: var(--space-4); }

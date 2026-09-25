@@ -376,11 +376,6 @@ const canStartBooking = (b) => now.value >= b.start - HOUR // matches the server
 .page-head { margin-bottom: clamp(1.5rem, 5vw, 2.5rem); }
 .page-head h1 { font-size: clamp(1.9rem, 5vw, 2.75rem); line-height: 1.1; letter-spacing: -0.03em; margin-bottom: var(--space-2); }
 .lede { font-size: 1.1rem; color: var(--color-muted); max-width: 36rem; }
-.comb-rule {
-  width: 3.5rem; height: 0.9rem; margin-bottom: var(--space-3);
-  background: repeating-linear-gradient(115deg, var(--color-accent) 0 3px, transparent 3px 11px);
-  opacity: 0.55;
-}
 .queue .banner { margin-bottom: var(--space-4); }
 .queue section { margin-bottom: clamp(2.5rem, 7vw, 4rem); }
 .queue h2 { font-size: clamp(1.3rem, 3vw, 1.7rem); margin-bottom: var(--space-2); }
@@ -419,7 +414,7 @@ const canStartBooking = (b) => now.value >= b.start - HOUR // matches the server
 ol.timeline { list-style: none; padding: 0; }
 
 /* Add a walk-in */
-.add-form { max-width: 40rem; padding: var(--space-5); box-shadow: 0 8px 28px rgba(30, 43, 42, 0.1); }
+.add-form { max-width: 40rem; padding: var(--space-5); box-shadow: var(--shadow-raised); }
 .add-form h3 { font-size: var(--text-lg); margin-bottom: var(--space-4); }
 .add-form .field { margin-bottom: var(--space-5); }
 .add-form input[type='text'] { font-size: 1.1rem; min-height: 52px; }

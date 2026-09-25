@@ -364,7 +364,7 @@ const badgeClass = (state) => ({ warn: state === 'offered' || state === 'offer-l
 .mine h2, .join h2 { font-size: clamp(1.3rem, 3vw, 1.6rem); }
 
 /* OTP steps and join form share one card look */
-.verify, .join { max-width: 34rem; padding: var(--space-5); box-shadow: 0 8px 28px rgba(30, 43, 42, 0.1); }
+.verify, .join { max-width: 34rem; padding: var(--space-5); box-shadow: var(--shadow-raised); }
 .verify { margin-bottom: var(--space-5); }
 .verify h2 { margin-bottom: var(--space-1); }
 .step-intro { margin-bottom: var(--space-5); }

@@ -124,11 +124,6 @@ function toggleBarber(b) {
 .config .banner { margin-bottom: var(--space-4); }
 .config section { margin-bottom: clamp(2.5rem, 7vw, 4rem); }
 .config h2 { font-size: clamp(1.3rem, 3vw, 1.6rem); margin-bottom: var(--space-4); }
-.comb-rule {
-  width: 3.5rem; height: 0.9rem; margin-bottom: var(--space-3);
-  background: repeating-linear-gradient(115deg, var(--color-accent) 0 3px, transparent 3px 11px);
-  opacity: 0.55;
-}
 .items { list-style: none; padding: 0; display: grid; gap: var(--space-3); margin-bottom: var(--space-4); }
 .item {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3) var(--space-5);

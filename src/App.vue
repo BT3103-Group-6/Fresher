@@ -12,8 +12,10 @@ const inStaffArea = computed(() => route.path.startsWith('/staff/'))
 const showStaffHeader = computed(() => inStaffArea.value && isStaff())
 const showCustomerHeader = computed(() => !inStaffArea.value && route.name !== 'login')
 
-// The landing page uses a wider column than the other screens.
-watchEffect(() => document.getElementById('app')?.classList.toggle('wide', !!route.meta.wide))
+// Every page shares one container (--container-max). Form-style customer pages cap their main column but keep
+// the same left edge.
+const NARROW = ['book', 'book-verify', 'deposit']
+watchEffect(() => document.getElementById('app')?.classList.toggle('narrow', NARROW.includes(route.name)))
 </script>
 
 <template>

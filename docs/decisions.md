@@ -237,6 +237,25 @@ Status key: PROPOSED (default in use, needs group approval) · AGREED (confirmed
 
 ---
 
+## UI restyle status
+Per-screen layout restyle on top of the design system (A14): generous whitespace, consistent cards, teal used sparingly, numbered step cards and selectable options whose selected state also shows a check mark, thicker border and bold text (never colour alone). All screens share one page container (`--container-max` and `--gutter` in `design-system.css`, applied to `#app` in `main.css`) so the header logo and content left edge line up; form-style customer pages (UI-C2, UI-C3, UI-C5) cap only their main column at `--content-narrow`. The section motif is the shared `.comb-rule` (four whole stripes) and raised cards use `--shadow-raised`. Statuses: **restyled** (screen layout done, checked in code), **design system only** (shared tokens and components but the old layout), **not started**. Checked against the code on 2026-09-25 (scoped layout styles, page header, shared container); not yet checked in a browser at 390, 1280 and 1920 px. Update this list after each restyle.
+
+| Screen | Route and file | Status | Notes |
+|---|---|---|---|
+| UI-C1 Discover shops | `/` `DiscoverView.vue` | Restyled | Landing page (A15): hero, search card, results cards, "Why Fresher", "For barbers". The reference for the other screens. |
+| UI-C2 Select service and slot | `/shops/:shopId` `ShopView.vue` | Restyled | Numbered step cards: 1 Service, 2 Barber, 3 Date, 4 Time, each with selectable options. |
+| UI-C3 Verify and confirm | `/shops/:shopId/verify` `VerifyView.vue` | Restyled | Page header and numbered panels for the summary, OTP and confirmation. |
+| UI-C4 My bookings | `/my-bookings` `MyBookingsView.vue` | Restyled | OTP card, segmented Upcoming and History tabs, booking cards, numbered date and time picker in reschedule. |
+| UI-C5 Deposit | `/deposit/:requestId` `DepositView.vue` | Restyled | Page header, amount and countdown panel, mock-payment note. |
+| UI-C6 Waitlist | `/waitlist` `WaitlistView.vue` | Restyled | OTP card, join form as four numbered steps, entry cards with offer countdown. |
+| UI-O1 Shop configuration | `/staff/config` `ShopConfigView.vue`, `ServiceForm.vue`, `BarberForm.vue` | Restyled | Item cards, editor cards, selectable services and day toggles. |
+| UI-O2 Dashboard | `/staff/dashboard` `DashboardView.vue` | Restyled | Date range card with preset chips, metric cards, per-barber cards (replacing the table). |
+| UI-B1 Barber schedule | `/staff/schedule` `ScheduleView.vue` | Restyled | Barber chips, day navigation card, timeline cards, block form. |
+| UI-B2 Queue management | `/staff/queue` `QueueView.vue` | Restyled | Barber chips, queue cards, walk-in form as numbered steps. |
+| Staff sign-in | `/login` `SignInView.vue` | Restyled | Sign-in card and "Not authorised" card. |
+
+Not covered by the layout restyle: the unused Vue starter components (`HelloWorld.vue`, `TheWelcome.vue`, `WelcomeItem.vue`, `icons/`); `StaffHeader.vue` and `CustomerHeader.vue` keep their own layout and now sit in the shared container.
+
 ## Change log
 | Date | Decision | Change | Approved by |
 |---|---|---|---|
@@ -268,6 +287,7 @@ Status key: PROPOSED (default in use, needs group approval) · AGREED (confirmed
 | 2026-09-25 | A16 | Load performance: Firebase split per service and loaded on demand, Auth only when a route needs it (staff-session hint for the landing page), vendor chunks by service | AGREED (user) |
 
 ---
+| 2026-09-25 | A14 | Added the "UI restyle status" list and the shared page container, comb motif and raised-shadow tokens; screen layouts restyled one by one (docs only; no logic change) | pending |
 
 ## Known limitations and backlog
 Living list. Add an entry when a shortcut is taken or something is deferred; remove or mark **Resolved** when fixed. This section feeds the "Limitations" section of the final report.
@@ -308,6 +328,6 @@ Living list. Add an entry when a shortcut is taken or something is deferred; rem
 | L32 | A warning is judged "can go out at least 15 minutes ahead" when the delay is detected, but delivery follows through the sender and can be up to about a minute later, so a warning detected exactly 15 minutes ahead may be delivered slightly inside that window. There is one warning per booking: a rescheduled booking (its task goes stale), a delay that grows, or a delay that clears sends nothing more. The provider is a mock (L4). | The provider call cannot share the transaction; one deterministic task per booking (`{bookingId}_delay`). | Optional: send inline after commit; a "delay cleared" or update message. | FR-10 |
 | L33 | The sweep recalculates every barber with a `CONFIRMED` or `IN_SERVICE` appointment in the window, once a minute, reading that barber's day each time, capped at 200 appointments per run (as L22). The new `appointments (status, start)` index is not enforced by the emulator, so it is unverified until deployed (as L20). | Simplest way to catch bookings made or cancelled between events. | Optional: restrict to barbers with something in service, a queue or an overdue booking. | FR-10, NFR-07 |
 | L34 | `startService` (FR-12) does not refuse when the barber already has a booking or walk-in in service; only `startWalkIn` returns `BARBER_BUSY`. The projection uses the latest expected end when several are in service. | Avoids changing FR-12 behaviour and its tests in FR-10. | Optional: apply `BARBER_BUSY` to `startService` too. | FR-10, FR-12 |
-| L35 | The app is light only: the starter dark colour scheme was dropped with A14, and screen layouts still follow the pre-design-system arrangement. `public/favicon.ico` (starter icon) stays as a fallback for old browsers. | Design scope (A14): shared elements first. | Redesign layouts per screen; optionally add a dark theme and a `.ico` favicon. | NFR-06 |
+| L35 | The app is light only: the starter dark colour scheme was dropped with A14. Screen layouts are restyled (see "UI restyle status"). `public/favicon.ico` (starter icon) stays as a fallback for old browsers. | Design scope (A14): shared elements first. | Optionally add a dark theme and a `.ico` favicon; check the restyled layouts in a browser. | NFR-06 |
 | L36 | The discovery search state (A15) is kept in memory only, so a page reload clears the results and filter; only navigating within the app (shop and back) keeps them. | Kept simple for the prototype. | Optional: persist the search in `sessionStorage`. | FR-01 |
 | L37 | The link in mock SMS messages uses `APP_BASE_URL`, falling back to a placeholder domain outside the emulator, so it is not a working address until a real domain is configured. | No production domain in the prototype. | Set `APP_BASE_URL` at deploy time. | FR-09 |

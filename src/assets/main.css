@@ -2,12 +2,14 @@
 
 /* Screen layout rules. Colours, type, buttons, cards, badges and fields come from design-system.css. */
 
+/* One container for every page: headers and content share the same left edge. Narrow pages (forms) keep the
+   left edge and cap only the main column. */
 #app {
-  max-width: 760px;
+  max-width: var(--container-max);
   margin: 0 auto;
-  padding: 1rem;
+  padding: 1rem var(--gutter);
 }
-#app.wide { max-width: 1120px; }
+#app.narrow > main { max-width: var(--content-narrow); }
 
 
 section { margin-bottom: 2rem; }
