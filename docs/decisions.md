@@ -33,7 +33,9 @@ Status key: PROPOSED (default in use, needs group approval) · AGREED (confirmed
 - **Late policy:** per shop, `latePolicy`:
   - `"block"` (default): the cancellation is refused, and the attempt increments `shopStats.lateCancels`.
   - `"flag"`: the cancellation proceeds, the appointment gets `lateCancel: true`, and `lateCancels` increments.
-- **Rescheduling:** follows the same notice window as cancellation. Atomic swap; the original stands if the new slot is taken.
+- **Blocked attempts count once:** under `"block"`, each refused attempt is audited, but `shopStats.lateCancels` increments at most once per booking. The first refusal sets `lateCancelAttempted: true` on the appointment; later refusals leave the counter alone. Under `"flag"` the single cancellation increments it once.
+- **Rescheduling:** follows the same notice window as cancellation, measured against the current start. Atomic swap; the original stands if the new slot is taken. A late reschedule is refused under both policies (`LATE_CHANGE`) and does not touch `lateCancels`. A reschedule keeps the same shop, service and barber (no barber or service change in the prototype); price and duration snapshots are kept.
+- **Fresh OTP:** history and booking changes need a fresh OTP, meaning the ID token's `auth_time` is within the last 10 minutes, enforced by the server (`REAUTH_REQUIRED`). Staff cancellations are exempt.
 - **Staff cancellations:** always allowed, never late, customer notified.
 - **Booking horizon:** today to +13 days (14 dates), Asia/Singapore.
 - **Slot hold:** 10 minutes (`holdExpiresAt`).
@@ -101,6 +103,11 @@ Status key: PROPOSED (default in use, needs group approval) · AGREED (confirmed
 | 2026-09-25 | architecture | `addBarber` does not write `auditLog`; `auditLog` is for booking state changes only (NFR-08) | pending |
 | 2026-09-25 | A3 | Booking horizon 14 days | pending |
 | 2026-09-25 | A2/architecture | `releaseHold` callable; hold intervals carry no `refId`; `customerId` null while HELD | pending |
+| 2026-09-25 | A2/A3 | Fresh OTP = token `auth_time` within 10 minutes, checked server-side; staff cancels exempt | AGREED (user) |
+| 2026-09-25 | A3 | Late reschedule refused under both policies, does not count toward `lateCancels` | AGREED (user) |
+| 2026-09-25 | A3 | Reschedule keeps the same shop, service and barber | AGREED (user) |
+| 2026-09-25 | A3 | A blocked late cancel increments `lateCancels` at most once per booking, tracked by `appointments.lateCancelAttempted` | AGREED (user) |
+| 2026-09-25 | architecture | `auditLog` gains `action` ("hold", "confirm", "release", "cancel", "reschedule", "lateCancelRefused") so same-state records are distinguishable; refused late attempts and reschedules are recorded as CONFIRMED→CONFIRMED with auto IDs | AGREED (user) |
 
 ---
 
@@ -115,4 +122,8 @@ Living list. Add an entry when a shortcut is taken or something is deferred; rem
 | L4 | No confirmation or reminder SMS is sent; messaging is mocked and not yet built. | FR-09 is Extension. | With FR-09; UI must keep saying it is mocked. | FR-09 |
 | L5 | The booking draft (UI-C2/C3) is held in memory only, so a page reload loses it; the hold then lapses after 10 minutes. | Kept simple for the prototype. | Optional: persist the draft in `sessionStorage`. | NFR-05 |
 | L6 | Concurrency tests cover 50 simultaneous holds and 100 repeated submissions. The 1000-transaction zero-double-booking run (NFR-03) and the 100 simulated failed-write runs (NFR-05) are not yet scripted. Tests run against the emulator only. | Time. | Before the final report's test results. | NFR-03, NFR-05 |
-| L7 | Customers can only start from `/shops/:shopId`; there is no discovery, "my bookings", cancellation or rescheduling. | Build order (A10). | FR-01, FR-04, FR-05, FR-11. | FR-01, FR-04 |
+| L7 | Customers can only start from `/shops/:shopId`; there is no discovery or booking history. "My bookings" (upcoming only), cancellation and rescheduling exist (UI-C4). | Build order (A10). | FR-01, FR-11. | FR-01, FR-11 |
+| L8 | The barber change alert (A4) and the customer notice on a staff cancellation are not sent; no `notifications` docs are written for cancel or reschedule. | Messaging is not built (L4). | With FR-09. | FR-04, FR-09 |
+| L9 | Reschedule keeps the same barber and service; there is no move to another barber or "any available". | Scope kept small (A3). | Optional extension. | FR-04 |
+| L10 | Staff cancellation exists only as a callable (`cancelBooking` with a staff token); there is no staff UI. | UI-B1 is not built yet. | With UI-B1. | FR-04, FR-08 |
+| L11 | Under heavy contention (e.g. 50 concurrent `holdSlot` calls across several barber-days) the Firestore and Functions emulators occasionally reset connections (`ECONNRESET` after about 60 s, with `Transaction lock timeout` in the Firestore emulator log). The concurrency harness (`call()` in `tests/concurrency.test.mjs`) treats such responses as transport failures, never as results, retries the idempotent call with the same `requestId`, reports how many retries happened, and asserts on the stored data (appointments, schedule intervals, audit records). Production Firestore behaviour under load is untested. | The emulator uses lock timeouts where production Firestore aborts and retries, and a worker process is started per concurrent request. | Before the final report's test results (with L6): run the NFR-03 load against a real project or quantify the retry rate. | NFR-03, NFR-05 |

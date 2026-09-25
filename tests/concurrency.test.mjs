@@ -4,6 +4,7 @@ import { after, before, describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { initializeApp } from 'firebase-admin/app'
+import { getAuth } from 'firebase-admin/auth'
 import { Timestamp, getFirestore } from 'firebase-admin/firestore'
 
 const PROJECT = 'fresher-6d857' // must match the project the emulators run functions for
@@ -13,7 +14,8 @@ if (!process.env.FIRESTORE_EMULATOR_HOST || !AUTH_HOST) {
   process.exit(1)
 }
 const FUNCTIONS = `http://127.0.0.1:5001/${PROJECT}/asia-southeast1`
-const db = getFirestore(initializeApp({ projectId: PROJECT }))
+const app = initializeApp({ projectId: PROJECT })
+const db = getFirestore(app)
 
 const SG_OFFSET_MS = 8 * 3600e3
 const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
@@ -27,11 +29,11 @@ const slot = (hh, mm = 0) => {
 }
 
 const shopIds = []
-async function makeShop(barberIds) {
+async function makeShop(barberIds, extra = {}) {
   const id = `test-${randomUUID().slice(0, 8)}`
   shopIds.push(id)
   const shop = db.doc(`shops/${id}`)
-  await shop.set({ name: 'Concurrency test shop', status: 'verified', tz: 'Asia/Singapore', openingHours: allWeek, noticeMins: 120 })
+  await shop.set({ name: 'Concurrency test shop', status: 'verified', tz: 'Asia/Singapore', openingHours: allWeek, noticeMins: 120, latePolicy: 'block', ...extra })
   await shop.collection('services').doc('cut').set({ name: 'Cut', durationMin: 30, priceCents: 2500, active: true })
   for (const b of barberIds) {
     await shop.collection('barbers').doc(b).set({ displayName: b, active: true, serviceIds: ['cut'], workingHours: allWeek })
@@ -39,16 +41,35 @@ async function makeShop(barberIds) {
   return id
 }
 
+// Transport failures (the Functions emulator resetting a connection or timing out under 50 concurrent cold
+// workers and Firestore lock timeouts) are not callable responses: they carry neither `result` nor `error`.
+// They must never be read as success, so a response is accepted only if it is a real callable envelope.
+// The calls under test are idempotent, so a client would retry the same request; we do too, and report it.
+const transportFailures = []
+const MAX_TRANSPORT_RETRIES = 3
 async function call(name, data, idToken) {
-  const res = await fetch(`${FUNCTIONS}/${name}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', ...(idToken ? { authorization: `Bearer ${idToken}` } : {}) },
-    body: JSON.stringify({ data }),
-  })
-  const body = await res.json()
-  return body.error
-    ? { ok: false, status: body.error.status, reason: body.error.details && body.error.details.reason }
-    : { ok: true, data: body.result }
+  for (let attempt = 0; ; attempt++) {
+    let status = 0
+    let text = ''
+    let body = null
+    try {
+      const res = await fetch(`${FUNCTIONS}/${name}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...(idToken ? { authorization: `Bearer ${idToken}` } : {}) },
+        body: JSON.stringify({ data }),
+      })
+      status = res.status
+      text = await res.text()
+      body = JSON.parse(text)
+    } catch { /* body stays null: not a callable response */ }
+    if (body && (body.error || 'result' in body)) {
+      return body.error
+        ? { ok: false, status: body.error.status, reason: body.error.details && body.error.details.reason }
+        : { ok: true, data: body.result }
+    }
+    transportFailures.push(`${name} attempt ${attempt + 1}: HTTP ${status} ${text.slice(0, 120)}`)
+    if (attempt >= MAX_TRANSPORT_RETRIES) throw new Error(`${name}: no callable response after ${attempt + 1} tries (HTTP ${status} ${text.slice(0, 120)})`)
+  }
 }
 const hold = (shopId, barberId, start, requestId = randomUUID()) =>
   call('holdSlot', { shopId, serviceId: 'cut', barberId, start, requestId })
@@ -80,10 +101,16 @@ before(async () => {
 })
 
 after(async () => {
+  if (transportFailures.length) {
+    console.log(`NOTE: ${transportFailures.length} emulator transport failure(s) were retried (never counted as results):`)
+    for (const f of transportFailures.slice(0, 10)) console.log(`  ${f}`)
+  }
   for (const id of shopIds) await db.recursiveDelete(db.doc(`shops/${id}`))
-  for (const c of ['appointments', 'auditLog']) {
-    const snap = await db.collection(c).where('shopId', 'in', shopIds.slice(0, 30)).get()
-    await Promise.all(snap.docs.map((d) => d.ref.delete()))
+  for (let i = 0; i < shopIds.length; i += 30) { // Firestore allows 30 values per "in"
+    for (const c of ['appointments', 'auditLog']) {
+      const snap = await db.collection(c).where('shopId', 'in', shopIds.slice(i, i + 30)).get()
+      await Promise.all(snap.docs.map((d) => d.ref.delete()))
+    }
   }
 })
 
@@ -302,6 +329,329 @@ describe('confirmBooking and releaseHold', () => {
       call('confirmBooking', { requestId: data.requestId, displayName: `C${i}` }, u.idToken)))
     assert.equal(results.filter((r) => r.ok).length, 1)
     assert.deepEqual([...new Set(results.filter((r) => !r.ok).map((r) => r.reason))], ['HOLD_ALREADY_USED'])
+    assert.equal((await intervalsOf(shopId, 'b1', slot(10))).length, 1)
+  })
+})
+
+// ---- FR-04 / FR-05: cancelBooking and reschedule ----
+
+let phoneSeq = 0
+const newPhone = () => `+659${String(3000000 + phoneSeq++)}`
+const MIN = 60e3
+const DAY = 24 * 3600e3
+
+/** Books a CONFIRMED appointment through holdSlot and confirmBooking as a fresh phone customer. */
+async function book(shopId, barberId, start) {
+  const held = await hold(shopId, barberId, start)
+  assert.ok(held.ok, `hold failed: ${held.reason}`)
+  const user = await phoneIdToken(newPhone())
+  const r = await call('confirmBooking', { requestId: held.data.requestId, displayName: 'Test' }, user.idToken)
+  assert.ok(r.ok, `confirm failed: ${r.reason}`)
+  return { requestId: held.data.requestId, ...user }
+}
+
+/** Writes a CONFIRMED appointment directly, for starts too soon for holdSlot's future checks to matter. */
+async function seedBooking(shopId, barberId, start, uid) {
+  const requestId = randomUUID()
+  const s = Timestamp.fromMillis(start)
+  const e = Timestamp.fromMillis(start + 30 * MIN)
+  await db.doc(`appointments/${requestId}`).set({
+    requestId, shopId, barberId, serviceId: 'cut', customerId: uid, customerName: 'Seed', customerPhoneMasked: '+65 9••• ••00',
+    start: s, end: e, status: 'CONFIRMED', holdExpiresAt: null, priceCents: 2500, durationMin: 30,
+  })
+  await db.doc(`shops/${shopId}/schedules/${barberId}_${dateKey(start)}`).set({
+    barberId, date: dateKey(start), intervals: [{ start: s, end: e, kind: 'booking', refId: requestId }],
+  })
+  return requestId
+}
+
+async function staffToken(claims) {
+  const email = `${randomUUID().slice(0, 8)}@test.example`
+  const user = await getAuth(app).createUser({ email, password: 'password123' })
+  await getAuth(app).setCustomUserClaims(user.uid, claims)
+  const res = await (await fetch(`http://${AUTH_HOST}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=x`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, password: 'password123', returnSecureToken: true }),
+  })).json()
+  return res.idToken
+}
+
+const apt = async (id) => (await db.doc(`appointments/${id}`).get()).data()
+const lateCancels = async (shopId, uid) => (await db.doc(`customers/${uid}/shopStats/${shopId}`).get()).data()?.lateCancels ?? 0
+const audit = async (shopId, bookingId) =>
+  (await db.collection('auditLog').where('shopId', '==', shopId).where('bookingId', '==', bookingId).get()).docs.map((d) => d.data())
+const actions = async (shopId, bookingId) => (await audit(shopId, bookingId)).map((a) => a.action).sort()
+const covering = (intervals, start) => intervals.filter((iv) => iv.start.toMillis() < start + 30 * MIN && start < iv.end.toMillis())
+const cancel = (requestId, idToken) => call('cancelBooking', { requestId }, idToken)
+const move = (requestId, newStart, idToken) => call('reschedule', { requestId, newStart }, idToken)
+
+describe('audit actions', () => {
+  it('records hold, confirm and release with an action', async () => {
+    const shopId = await makeShop(['b1'])
+    const a = await book(shopId, 'b1', slot(10))
+    assert.deepEqual(await actions(shopId, a.requestId), ['confirm', 'hold'])
+    const h = await hold(shopId, 'b1', slot(11))
+    await call('releaseHold', { requestId: h.data.requestId })
+    assert.deepEqual(await actions(shopId, h.data.requestId), ['hold', 'release'])
+  })
+})
+
+describe('FR-04 reschedule', () => {
+  it('moves a booking to another day atomically, keeps snapshots, audits once, and replays idempotently', async () => {
+    const shopId = await makeShop(['b1'])
+    const from = slot(10)
+    const to = slot(14) + DAY
+    const a = await book(shopId, 'b1', from)
+
+    const r = await move(a.requestId, to, a.idToken)
+    assert.equal(r.ok, true)
+    assert.equal(r.data.start, to)
+    const doc = await apt(a.requestId)
+    assert.equal(doc.start.toMillis(), to)
+    assert.equal(doc.end.toMillis() - to, 30 * MIN)
+    assert.equal(doc.priceCents, 2500)
+    assert.equal(doc.status, 'CONFIRMED')
+    assert.equal((await intervalsOf(shopId, 'b1', from)).length, 0, 'the original slot is released')
+    const now = await intervalsOf(shopId, 'b1', to)
+    assert.equal(now.length, 1)
+    assert.deepEqual([now[0].kind, now[0].refId], ['booking', a.requestId])
+    assert.equal((await hold(shopId, 'b1', from)).ok, true, 'the released slot is immediately bookable')
+
+    assert.equal((await move(a.requestId, to, a.idToken)).ok, true, 'a retry is a replay, not an error')
+    assert.deepEqual(await actions(shopId, a.requestId), ['confirm', 'hold', 'reschedule'])
+    const rec = (await audit(shopId, a.requestId)).find((x) => x.action === 'reschedule')
+    assert.deepEqual([rec.fromStatus, rec.toStatus, rec.role], ['CONFIRMED', 'CONFIRMED', 'customer'])
+  })
+
+  it('lets a booking shift into time that overlaps its own current slot', async () => {
+    const shopId = await makeShop(['b1'])
+    const a = await book(shopId, 'b1', slot(10))
+    assert.equal((await move(a.requestId, slot(10, 15), a.idToken)).ok, true)
+    const intervals = await intervalsOf(shopId, 'b1', slot(10))
+    assert.equal(intervals.length, 1)
+    assert.equal(intervals[0].start.toMillis(), slot(10, 15))
+  })
+
+  it('leaves the original untouched when the new slot is taken', async () => {
+    const shopId = await makeShop(['b1'])
+    const a = await book(shopId, 'b1', slot(10))
+    await book(shopId, 'b1', slot(11))
+    const r = await move(a.requestId, slot(11, 15), a.idToken)
+    assert.equal(r.reason, 'SLOT_TAKEN')
+    assert.equal((await apt(a.requestId)).start.toMillis(), slot(10))
+    const intervals = await intervalsOf(shopId, 'b1', slot(10))
+    assert.equal(intervals.length, 2)
+    assert.ok(intervals.some((iv) => iv.refId === a.requestId && iv.start.toMillis() === slot(10)))
+    assert.deepEqual(await actions(shopId, a.requestId), ['confirm', 'hold'], 'a failed reschedule writes no audit record')
+  })
+
+  for (const mode of ['same day', 'next day']) {
+    it(`reschedule racing 8 new bookings for the same slot (${mode}): the slot has exactly one owner and the original stands if it loses`, async () => {
+      for (let round = 0; round < 8; round++) {
+        const shopId = await makeShop(['b1'])
+        const from = slot(10)
+        const target = mode === 'same day' ? slot(11) : slot(11) + DAY
+        const a = await book(shopId, 'b1', from)
+
+        const [re, ...holds] = await Promise.all([
+          move(a.requestId, target, a.idToken),
+          ...Array.from({ length: 8 }, () => hold(shopId, 'b1', target)),
+        ])
+        const winners = holds.filter((h) => h.ok)
+        assert.ok(holds.every((h) => h.ok || h.reason === 'SLOT_TAKEN'), 'holdSlot losers report SLOT_TAKEN only')
+        assert.equal(covering(await intervalsOf(shopId, 'b1', target), target).length, 1, `round ${round}: one owner of the target slot`)
+
+        const doc = await apt(a.requestId)
+        const origin = await intervalsOf(shopId, 'b1', from)
+        if (re.ok) {
+          assert.equal(winners.length, 0, 'the reschedule won, so no hold can have')
+          assert.equal(doc.start.toMillis(), target)
+          assert.equal(covering(origin, from).length, 0, 'the old slot is released')
+          const owner = covering(await intervalsOf(shopId, 'b1', target), target)[0]
+          assert.deepEqual([owner.kind, owner.refId], ['booking', a.requestId])
+          assert.equal(await count('appointments', shopId), 1)
+        } else {
+          assert.equal(re.reason, 'SLOT_TAKEN')
+          assert.equal(winners.length, 1, 'a hold won the slot')
+          assert.equal(doc.start.toMillis(), from, 'the original booking is unchanged')
+          assert.equal(doc.status, 'CONFIRMED')
+          assert.ok(origin.some((iv) => iv.kind === 'booking' && iv.refId === a.requestId && iv.start.toMillis() === from))
+          assert.deepEqual(await actions(shopId, a.requestId), ['confirm', 'hold'])
+        }
+      }
+    })
+  }
+
+  it('two customers rescheduling into the same slot: exactly one wins, the other keeps their booking', async () => {
+    const shopId = await makeShop(['b1'])
+    const a = await book(shopId, 'b1', slot(10))
+    const b = await book(shopId, 'b1', slot(12))
+    const target = slot(14)
+    const results = await Promise.all([move(a.requestId, target, a.idToken), move(b.requestId, target, b.idToken)])
+    assert.equal(results.filter((r) => r.ok).length, 1)
+    assert.equal(results.find((r) => !r.ok).reason, 'SLOT_TAKEN')
+    const [loser, from] = results[0].ok ? [b, slot(12)] : [a, slot(10)]
+    assert.equal((await apt(loser.requestId)).start.toMillis(), from)
+    const all = await intervalsOf(shopId, 'b1', target)
+    assert.equal(all.length, 2)
+    assert.equal(covering(all, target).length, 1)
+  })
+
+  it('cancel racing reschedule on one booking ends consistent: cancelled, no interval anywhere', async () => {
+    for (let round = 0; round < 6; round++) {
+      const shopId = await makeShop(['b1'])
+      const a = await book(shopId, 'b1', slot(10))
+      const target = slot(12) + DAY
+      const [c, m] = await Promise.all([cancel(a.requestId, a.idToken), move(a.requestId, target, a.idToken)])
+      assert.equal(c.ok, true)
+      assert.ok(m.ok || m.reason === 'NOT_RESCHEDULABLE', `unexpected reschedule outcome ${m.reason}`)
+      assert.equal((await apt(a.requestId)).status, 'CANCELLED')
+      assert.equal((await intervalsOf(shopId, 'b1', slot(10))).length, 0)
+      assert.equal((await intervalsOf(shopId, 'b1', target)).length, 0)
+    }
+  })
+
+  it('rejects other customers, anonymous callers, bad times, late changes and deactivated barbers, changing nothing', async () => {
+    const shopId = await makeShop(['b1'])
+    const a = await book(shopId, 'b1', slot(10))
+    const other = await phoneIdToken(newPhone())
+    assert.equal((await move(a.requestId, slot(12), other.idToken)).reason, 'BOOKING_NOT_FOUND')
+    assert.equal((await move(a.requestId, slot(12))).status, 'UNAUTHENTICATED')
+    assert.equal((await move(a.requestId, slot(12, 7), a.idToken)).status, 'INVALID_ARGUMENT')
+    assert.equal((await move(a.requestId, Date.now() - 3600e3, a.idToken)).status, 'INVALID_ARGUMENT')
+    assert.equal((await move(a.requestId, slot(10) + 20 * DAY, a.idToken)).status, 'INVALID_ARGUMENT')
+
+    await db.doc(`shops/${shopId}/barbers/b1`).update({ active: false })
+    assert.equal((await move(a.requestId, slot(12), a.idToken)).status, 'INVALID_ARGUMENT')
+    await db.doc(`shops/${shopId}/barbers/b1`).update({ active: true })
+    assert.equal((await apt(a.requestId)).start.toMillis(), slot(10))
+
+    const cust = await phoneIdToken(newPhone())
+    const soon = await seedBooking(shopId, 'b1', Date.now() + 30 * MIN, cust.uid)
+    assert.equal((await move(soon, slot(15), cust.idToken)).reason, 'LATE_CHANGE')
+    assert.equal(await lateCancels(shopId, cust.uid), 0, 'a late reschedule does not count as a late cancel')
+    assert.equal((await apt(soon)).start.toMillis() < slot(15), true)
+  })
+})
+
+describe('FR-05 cancelBooking', () => {
+  it('cancels outside the notice window: frees the slot, not late, audited', async () => {
+    const shopId = await makeShop(['b1'])
+    const a = await book(shopId, 'b1', slot(10))
+    const r = await cancel(a.requestId, a.idToken)
+    assert.equal(r.ok, true)
+    const doc = await apt(a.requestId)
+    assert.deepEqual([doc.status, doc.lateCancel], ['CANCELLED', false])
+    assert.equal((await intervalsOf(shopId, 'b1', slot(10))).length, 0)
+    assert.equal(await lateCancels(shopId, a.uid), 0)
+    assert.deepEqual(await actions(shopId, a.requestId), ['cancel', 'confirm', 'hold'])
+    assert.equal((await hold(shopId, 'b1', slot(10))).ok, true, 'the released slot returns to the pool immediately')
+  })
+
+  it('20 simultaneous cancels change state once', async () => {
+    const shopId = await makeShop(['b1'], { latePolicy: 'flag' })
+    const cust = await phoneIdToken(newPhone())
+    const id = await seedBooking(shopId, 'b1', Date.now() + 30 * MIN, cust.uid) // late, so a double count would show
+    const results = await Promise.all(Array.from({ length: 20 }, () => cancel(id, cust.idToken)))
+    assert.ok(results.every((r) => r.ok))
+    assert.equal((await actions(shopId, id)).filter((x) => x === 'cancel').length, 1)
+    assert.equal(await lateCancels(shopId, cust.uid), 1)
+  })
+
+  it('block policy: a late cancel is refused, the booking stands, and repeated attempts count once in total', async () => {
+    const shopId = await makeShop(['b1'], { latePolicy: 'block' })
+    const cust = await phoneIdToken(newPhone())
+    const start = Date.now() + 30 * MIN
+    const id = await seedBooking(shopId, 'b1', start, cust.uid)
+
+    const first = await cancel(id, cust.idToken)
+    assert.equal(first.reason, 'LATE_CANCEL_BLOCKED')
+    assert.equal(await lateCancels(shopId, cust.uid), 1)
+    assert.equal((await apt(id)).lateCancelAttempted, true)
+
+    const rest = await Promise.all(Array.from({ length: 10 }, () => cancel(id, cust.idToken)))
+    assert.ok(rest.every((r) => r.reason === 'LATE_CANCEL_BLOCKED'))
+    assert.equal(await lateCancels(shopId, cust.uid), 1, 'repeated attempts are +1 in total, not +1 each')
+
+    const doc = await apt(id)
+    assert.equal(doc.status, 'CONFIRMED')
+    assert.equal(doc.lateCancel, undefined)
+    assert.equal((await intervalsOf(shopId, 'b1', start)).length, 1, 'the slot is not released')
+    const acts = await actions(shopId, id)
+    assert.equal(acts.length, 11, 'every refused attempt is audited')
+    assert.ok(acts.every((x) => x === 'lateCancelRefused'))
+    const rec = (await audit(shopId, id))[0]
+    assert.deepEqual([rec.fromStatus, rec.toStatus], ['CONFIRMED', 'CONFIRMED'])
+  })
+
+  it('flag policy: a late cancel proceeds, is flagged, and counts once', async () => {
+    const shopId = await makeShop(['b1'], { latePolicy: 'flag' })
+    const cust = await phoneIdToken(newPhone())
+    const start = Date.now() + 30 * MIN
+    const id = await seedBooking(shopId, 'b1', start, cust.uid)
+    assert.equal((await cancel(id, cust.idToken)).ok, true)
+    const doc = await apt(id)
+    assert.deepEqual([doc.status, doc.lateCancel], ['CANCELLED', true])
+    assert.equal(await lateCancels(shopId, cust.uid), 1)
+    assert.equal((await intervalsOf(shopId, 'b1', start)).length, 0)
+    assert.equal((await cancel(id, cust.idToken)).ok, true, 'a retry is a replay')
+    assert.equal(await lateCancels(shopId, cust.uid), 1)
+    assert.deepEqual(await actions(shopId, id), ['cancel'])
+  })
+
+  it('applies the shop\'s own noticeMins either side of the boundary', async () => {
+    const shopId = await makeShop(['b1'], { noticeMins: 60, latePolicy: 'block' })
+    const cust = await phoneIdToken(newPhone())
+    const inside = await seedBooking(shopId, 'b1', Date.now() + 60 * MIN - 90e3, cust.uid)
+    const outside = await seedBooking(shopId, 'b1', Date.now() + 60 * MIN + 90e3 + 40 * MIN, cust.uid)
+    assert.equal((await cancel(inside, cust.idToken)).reason, 'LATE_CANCEL_BLOCKED')
+    assert.equal((await cancel(outside, cust.idToken)).ok, true)
+    assert.equal((await apt(outside)).lateCancel, false)
+  })
+
+  it('refuses a customer cancelling an appointment that has already started, without counting it', async () => {
+    const shopId = await makeShop(['b1'])
+    const cust = await phoneIdToken(newPhone())
+    const id = await seedBooking(shopId, 'b1', Date.now() - 5 * MIN, cust.uid)
+    assert.equal((await cancel(id, cust.idToken)).reason, 'ALREADY_STARTED')
+    assert.equal(await lateCancels(shopId, cust.uid), 0)
+    assert.equal((await apt(id)).status, 'CONFIRMED')
+  })
+
+  it('staff cancellations are never late and never count against the customer', async () => {
+    const shopId = await makeShop(['b1', 'b2'], { latePolicy: 'block' })
+    const cust = await phoneIdToken(newPhone())
+    const owner = await staffToken({ shopId, role: 'owner' })
+    const barber = await staffToken({ shopId, role: 'barber', barberId: 'b1' })
+    const start = Date.now() + 20 * MIN
+
+    const byOwner = await seedBooking(shopId, 'b1', start, cust.uid)
+    assert.equal((await cancel(byOwner, owner)).ok, true)
+    const byBarber = await seedBooking(shopId, 'b1', start + 40 * MIN, cust.uid)
+    assert.equal((await cancel(byBarber, barber)).ok, true)
+    for (const id of [byOwner, byBarber]) {
+      const doc = await apt(id)
+      assert.deepEqual([doc.status, doc.lateCancel], ['CANCELLED', false])
+    }
+    assert.equal(await lateCancels(shopId, cust.uid), 0)
+    assert.deepEqual((await audit(shopId, byOwner)).map((a) => [a.action, a.role]), [['cancel', 'owner']])
+    assert.deepEqual((await audit(shopId, byBarber)).map((a) => [a.action, a.role]), [['cancel', 'barber']])
+  })
+
+  it('rejects staff of another shop, another barber, other customers and anonymous callers', async () => {
+    const shopId = await makeShop(['b1', 'b2'])
+    const otherShop = await makeShop(['b1'])
+    const cust = await phoneIdToken(newPhone())
+    const id = await seedBooking(shopId, 'b1', slot(10), cust.uid)
+    const stranger = await phoneIdToken(newPhone())
+    const tokens = [
+      await staffToken({ shopId: otherShop, role: 'owner' }),
+      await staffToken({ shopId, role: 'barber', barberId: 'b2' }),
+      stranger.idToken,
+    ]
+    for (const t of tokens) assert.equal((await cancel(id, t)).reason, 'BOOKING_NOT_FOUND')
+    assert.equal((await cancel(id)).status, 'UNAUTHENTICATED')
+    assert.equal((await apt(id)).status, 'CONFIRMED')
     assert.equal((await intervalsOf(shopId, 'b1', slot(10))).length, 1)
   })
 })

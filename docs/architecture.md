@@ -95,7 +95,7 @@ Per barber: `completed, valueCents, noShows, bookedMin, openMin`
 `walkInName, serviceId, barberId, joinedAt, startedAt, endedAt`
 
 ### appointments/{bookingId}  (top level; bookingId = client requestId)
-`shopId, barberId, serviceId, customerId (null while HELD; set by `confirmBooking`), customerName, customerPhoneMasked, start, end, status, holdExpiresAt, priceCents, durationMin (snapshots, FR-06), requestId, lateCancel, depositId, actualStart, actualEnd (FR-10)`
+`shopId, barberId, serviceId, customerId (null while HELD; set by `confirmBooking`), customerName, customerPhoneMasked, start, end, status, holdExpiresAt, priceCents, durationMin (snapshots, FR-06), requestId, lateCancel, lateCancelAttempted (set on the first refused late cancel; limits the `lateCancels` increment to once per booking), depositId, actualStart, actualEnd (FR-10)`
 `customerName` and `customerPhoneMasked` are copied onto the appointment by `confirmBooking` so staff never need to read `customers/{uid}`. The number is masked only (e.g. `+65 9••• ••12`); the full number is never stored on the appointment.
 
 ### customers/{uid}
@@ -107,8 +107,9 @@ Sub-collection `shopStats/{shopId}`: `noShowCount, lateCancels, depositRequired 
 taskId is deterministic (`{bookingId}_{type}`) to prevent duplicates.
 
 ### auditLog/{eventId}
-`bookingId, shopId, actorUid, role, fromStatus, toStatus, at, expireAt (= at + 12 months, Firestore TTL policy, NFR-08)`
-No client can write or update. Written only inside the same transaction as the state change.
+`bookingId, shopId, actorUid, role, action, fromStatus, toStatus, at, expireAt (= at + 12 months, Firestore TTL policy, NFR-08)`
+`action` says what happened, because some records have the same from and to status: `hold` (none→HELD), `confirm` (HELD→CONFIRMED), `release` (HELD→EXPIRED, by `releaseHold` or lazily when a confirm finds the hold expired), `cancel` (CONFIRMED→CANCELLED, by customer or staff), `reschedule` (CONFIRMED→CONFIRMED, the slot moved) and `lateCancelRefused` (CONFIRMED→CONFIRMED, a customer cancel refused under the `block` policy). Records for transitions use the deterministic ID `{bookingId}_{TO}`; `reschedule` and `lateCancelRefused` can repeat, so they use auto IDs.
+No client can write or update. Written only inside the same transaction as the state change (a refused late attempt is written in its own transaction, together with the once-per-booking `lateCancels` increment, and the error is returned after it commits).
 
 ### deposits/{depositId}  (extension, FR-13)
 `bookingId, shopId (for staff-scoped rules), amountCents, status ("pending" | "paid" | "refundable" | "forfeited" | "failed"), providerRef`

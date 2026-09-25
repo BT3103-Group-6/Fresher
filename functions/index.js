@@ -125,3 +125,8 @@ exports.holdSlot = onCall((request) => booking.holdSlot(request.data || {}));
 exports.confirmBooking = onCall((request) => booking.confirmBooking(request));
 exports.releaseHold =
   onCall((request) => booking.releaseHold(request.data || {}));
+
+// FR-04/FR-05: cancellation and rescheduling. Customers need a fresh OTP;
+// cancelBooking also accepts staff tokens (never late).
+exports.cancelBooking = onCall((request) => booking.cancelBooking(request));
+exports.reschedule = onCall((request) => booking.reschedule(request));

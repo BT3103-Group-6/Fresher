@@ -15,6 +15,8 @@ const router = createRouter({
       // The draft is in memory only, so a reload lands back on slot selection.
       beforeEnter: (to) => (draft.hold && draft.shopId === to.params.shopId ? true : { name: 'book', params: to.params }),
     },
+    // Customer bookings (FR-04, FR-05). The view runs its own fresh-OTP step; the server re-checks it.
+    { path: '/my-bookings', name: 'my-bookings', component: () => import('@/views/customer/MyBookingsView.vue') },
     { path: '/login', name: 'login', component: () => import('@/views/staff/SignInView.vue') },
     {
       path: '/staff/config',

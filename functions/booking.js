@@ -11,6 +11,8 @@ const SG_OFFSET_MS = 8 * 60 * 60 * 1000; // Asia/Singapore has no DST.
 const MINUTE_MS = 60 * 1000;
 const DAY_MS = 24 * 60 * MINUTE_MS;
 const HOLD_MS = 10 * MINUTE_MS;
+const FRESH_OTP_MS = 10 * MINUTE_MS; // decisions A3: fresh OTP window.
+const DEFAULT_NOTICE_MINS = 120;
 const GRID_MS = 15 * MINUTE_MS;
 const HORIZON_DAYS = 14; // decisions A3: today to +13 days.
 const REQUEST_ID = /^[A-Za-z0-9-]{16,64}$/;
@@ -134,7 +136,7 @@ function summary(apt) {
 
 /**
  * Builds an auditLog record (NFR-08): 12-month TTL on expireAt.
- * @param {Object} a Fields: apt, actorUid, role, from, to, now.
+ * @param {Object} a Fields: apt, actorUid, role, action, from, to, now.
  * @return {Object} The document data.
  */
 function auditRecord(a) {
@@ -145,6 +147,7 @@ function auditRecord(a) {
     shopId: a.apt.shopId,
     actorUid: a.actorUid,
     role: a.role,
+    action: a.action,
     fromStatus: a.from,
     toStatus: a.to,
     at: Timestamp.fromMillis(a.now),
@@ -298,7 +301,8 @@ async function holdSlot(data) {
     }, {merge: true});
     tx.set(aptRef, apt);
     tx.set(db.doc(`auditLog/${requestId}_HELD`), auditRecord({
-      apt, actorUid: null, role: "customer", from: null, to: "HELD", now: at}));
+      apt, actorUid: null, role: "customer", action: "hold", from: null,
+      to: "HELD", now: at}));
     return summary(apt);
   });
 }
@@ -371,7 +375,7 @@ async function confirmBooking(request) {
           {merge: true});
       tx.update(aptRef, {status: "EXPIRED", holdExpiresAt: null});
       tx.set(db.doc(`auditLog/${requestId}_EXPIRED`),
-          auditRecord({...audit, to: "EXPIRED"}));
+          auditRecord({...audit, action: "release", to: "EXPIRED"}));
       return {expired: true};
     }
 
@@ -392,7 +396,7 @@ async function confirmBooking(request) {
     tx.set(db.doc(`customers/${uid}`),
         {phoneE164: phone, displayName}, {merge: true});
     tx.set(db.doc(`auditLog/${requestId}_CONFIRMED`),
-        auditRecord({...audit, to: "CONFIRMED"}));
+        auditRecord({...audit, action: "confirm", to: "CONFIRMED"}));
     return {summary: summary(confirmed)};
   });
   if (result.expired) {
@@ -430,10 +434,265 @@ async function releaseHold(data) {
         {merge: true});
     tx.update(aptRef, {status: "EXPIRED", holdExpiresAt: null});
     tx.set(db.doc(`auditLog/${requestId}_EXPIRED`), auditRecord({
-      apt, actorUid: null, role: "customer", from: "HELD", to: "EXPIRED",
-      now: at}));
+      apt, actorUid: null, role: "customer", action: "release", from: "HELD",
+      to: "EXPIRED", now: at}));
     return {released: true};
   });
 }
 
-module.exports = {holdSlot, confirmBooking, releaseHold};
+/**
+ * decisions A3: a change is free when start - now >= noticeMins.
+ * @param {number} start Appointment start (ms).
+ * @param {number} now Current time (ms).
+ * @param {number} noticeMins Shop notice window in minutes.
+ * @return {boolean} True if inside the notice window.
+ */
+function isLate(start, now, noticeMins) {
+  return start - now < noticeMins * MINUTE_MS;
+}
+
+/**
+ * Customer changes need a Singapore phone token that signed in within the
+ * last 10 minutes (fresh OTP, decisions A3).
+ * @param {Object} auth The callable's auth context.
+ * @param {number} now Current time (ms).
+ * @return {string} The customer uid.
+ */
+function requireFreshCustomer(auth, now) {
+  if (!auth) {
+    throw new HttpsError("unauthenticated", "Verify your mobile first.");
+  }
+  const phone = auth.token.phone_number;
+  if (typeof phone !== "string" || !SG_PHONE.test(phone)) {
+    throw new HttpsError("permission-denied",
+        "A Singapore mobile number is required.");
+  }
+  const authTime = auth.token.auth_time;
+  if (typeof authTime !== "number" || now - authTime * 1000 > FRESH_OTP_MS) {
+    throw failure("unauthenticated", "REAUTH_REQUIRED",
+        "Please verify your mobile again.");
+  }
+  return auth.uid;
+}
+
+/**
+ * @param {Object} auth The callable's auth context.
+ * @param {Object} apt Appointment data.
+ * @return {boolean} True if the caller is the shop's owner or the assigned
+ *   barber.
+ */
+function isStaffFor(auth, apt) {
+  const t = auth.token;
+  const assignedBarber = t.role === "barber" && t.barberId === apt.barberId;
+  return t.shopId === apt.shopId && (t.role === "owner" || assignedBarber);
+}
+
+/**
+ * cancelBooking: CONFIRMED -> CANCELLED. Customers (fresh OTP) are subject to
+ * the shop's notice window and latePolicy; staff cancellations are never late.
+ * @param {Object} request The callable request (auth, data).
+ * @return {Promise<Object>} Booking summary.
+ */
+async function cancelBooking(request) {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in first.");
+  const requestId = checkRequestId((request.data || {}).requestId);
+  const staff = auth.token.role === "owner" || auth.token.role === "barber";
+  const uid = staff ? auth.uid : requireFreshCustomer(auth, Date.now());
+  const role = staff ? auth.token.role : "customer";
+
+  const db = getFirestore();
+  const aptRef = db.doc(`appointments/${requestId}`);
+  const notFound = () =>
+    failure("not-found", "BOOKING_NOT_FOUND", "Booking not found.");
+
+  const result = await transact(async (tx) => {
+    const aptSnap = await tx.get(aptRef);
+    if (!aptSnap.exists) throw notFound();
+    const apt = aptSnap.data();
+    if (staff ? !isStaffFor(auth, apt) : apt.customerId !== uid) {
+      throw notFound(); // never reveal another customer's or shop's booking.
+    }
+    if (apt.status === "CANCELLED") return {summary: summary(apt)}; // replay.
+    if (apt.status !== "CONFIRMED") {
+      throw failure("failed-precondition", "NOT_CANCELLABLE",
+          "This booking can no longer be cancelled.");
+    }
+    const schedRef = scheduleRefOf(apt);
+    const refs = [schedRef];
+    if (!staff) refs.push(db.doc(`shops/${apt.shopId}`));
+    const [schedSnap, shopSnap] = await tx.getAll(...refs);
+    const at = Date.now();
+    const start = apt.start.toMillis();
+
+    let late = false;
+    if (!staff) {
+      if (start <= at) {
+        throw failure("failed-precondition", "ALREADY_STARTED",
+            "This appointment has already started.");
+      }
+      const shop = shopSnap.data() || {};
+      const notice = Number.isInteger(shop.noticeMins) ?
+        shop.noticeMins : DEFAULT_NOTICE_MINS;
+      late = isLate(start, at, notice);
+      if (late && shop.latePolicy !== "flag") { // "block" is the default.
+        // A refusal changes no booking state, but it is audited and counted
+        // (once per booking). Written now; the error is thrown after commit.
+        if (!apt.lateCancelAttempted) {
+          tx.update(aptRef, {lateCancelAttempted: true});
+          tx.set(db.doc(`customers/${uid}/shopStats/${apt.shopId}`),
+              {lateCancels: FieldValue.increment(1)}, {merge: true});
+        }
+        tx.set(db.collection("auditLog").doc(), auditRecord({
+          apt, actorUid: uid, role, action: "lateCancelRefused",
+          from: "CONFIRMED", to: "CONFIRMED", now: at}));
+        return {refused: true};
+      }
+    }
+
+    const remaining = liveIntervals(
+        schedSnap.data() && schedSnap.data().intervals, at)
+        .filter((iv) => !(iv.kind === "booking" && iv.refId === requestId));
+    tx.set(schedRef, {intervals: remaining, version: FieldValue.increment(1)},
+        {merge: true});
+    tx.update(aptRef, {status: "CANCELLED", lateCancel: late});
+    if (late) { // "flag" policy: cancellation proceeds and is counted.
+      tx.set(db.doc(`customers/${uid}/shopStats/${apt.shopId}`),
+          {lateCancels: FieldValue.increment(1)}, {merge: true});
+    }
+    tx.set(db.doc(`auditLog/${requestId}_CANCELLED`), auditRecord({
+      apt, actorUid: uid, role, action: "cancel", from: "CONFIRMED",
+      to: "CANCELLED", now: at}));
+    return {summary: summary({...apt, status: "CANCELLED"})};
+  });
+  if (result.refused) {
+    throw failure("failed-precondition", "LATE_CANCEL_BLOCKED",
+        "This booking is inside the cancellation window and cannot be " +
+        "cancelled online.");
+  }
+  return result.summary;
+}
+
+/**
+ * reschedule: CONFIRMED -> CONFIRMED at a new start, an atomic swap in one
+ * transaction. Same shop, service and barber. If the new slot is taken,
+ * nothing changes (SLOT_TAKEN).
+ * @param {Object} request The callable request (auth, data {requestId,
+ *   newStart}).
+ * @return {Promise<Object>} Booking summary.
+ */
+async function reschedule(request) {
+  const uid = requireFreshCustomer(request.auth, Date.now());
+  const data = request.data || {};
+  const requestId = checkRequestId(data.requestId);
+  const newStart = data.newStart;
+  if (!Number.isInteger(newStart) || newStart % GRID_MS !== 0) {
+    invalid("newStart", "Choose a start time on a 15-minute slot.");
+  }
+  const now = Date.now();
+  const horizon = sgTimeToMs(sgDateKey(now), "00:00") + HORIZON_DAYS * DAY_MS;
+  if (newStart <= now) invalid("newStart", "That time has already passed.");
+  if (newStart >= horizon) {
+    invalid("newStart", `Bookings open up to ${HORIZON_DAYS} days ahead.`);
+  }
+
+  const db = getFirestore();
+  const aptRef = db.doc(`appointments/${requestId}`);
+  const notFound = () =>
+    failure("not-found", "BOOKING_NOT_FOUND", "Booking not found.");
+  const seen = await aptRef.get();
+  if (!seen.exists || seen.data().customerId !== uid) throw notFound();
+  const seenApt = seen.data();
+  const shopRef = db.doc(`shops/${seenApt.shopId}`);
+  const [shopSnap, barberSnap] = await Promise.all([
+    shopRef.get(), shopRef.collection("barbers").doc(seenApt.barberId).get()]);
+  const shop = shopSnap.data() || {};
+  const barber = barberSnap.data() || {};
+  const newEnd = newStart + seenApt.durationMin * MINUTE_MS;
+  const stillOffered = barberSnap.exists && barber.active === true &&
+    Array.isArray(barber.serviceIds) &&
+    barber.serviceIds.includes(seenApt.serviceId);
+  if (seenApt.status === "CONFIRMED" && seenApt.start.toMillis() !== newStart) {
+    if (!withinHours(shop.openingHours, newStart, newEnd)) {
+      invalid("newStart", "That time is outside the shop's opening hours.");
+    }
+    if (!stillOffered || !withinHours(barber.workingHours, newStart, newEnd)) {
+      invalid("newStart", "Your barber is not working at that time.");
+    }
+  }
+  const notice = Number.isInteger(shop.noticeMins) ?
+    shop.noticeMins : DEFAULT_NOTICE_MINS;
+
+  const newRef = shopRef.collection("schedules")
+      .doc(scheduleId(seenApt.barberId, newStart));
+  const oldRef = scheduleRefOf(seenApt);
+  const sameDoc = oldRef.path === newRef.path;
+
+  return transact(async (tx) => {
+    const [aptSnap, oldSnap, newSnap] =
+      await tx.getAll(aptRef, oldRef, ...(sameDoc ? [] : [newRef]));
+    if (!aptSnap.exists) throw notFound();
+    const apt = aptSnap.data();
+    if (apt.customerId !== uid) throw notFound();
+    if (apt.status === "CONFIRMED" && apt.start.toMillis() === newStart) {
+      return summary(apt); // idempotent replay.
+    }
+    if (apt.status !== "CONFIRMED") {
+      throw failure("failed-precondition", "NOT_RESCHEDULABLE",
+          "This booking can no longer be changed.");
+    }
+    if (apt.start.toMillis() !== seenApt.start.toMillis()) {
+      throw failure("aborted", "BOOKING_CHANGED",
+          "This booking just changed. Please refresh.");
+    }
+    const at = Date.now();
+    const oldStart = apt.start.toMillis();
+    if (oldStart <= at) {
+      throw failure("failed-precondition", "ALREADY_STARTED",
+          "This appointment has already started.");
+    }
+    if (isLate(oldStart, at, notice)) {
+      throw failure("failed-precondition", "LATE_CHANGE",
+          "This booking is inside the notice window and cannot be moved " +
+          "online.");
+    }
+
+    const own = (iv) => iv.kind === "booking" && iv.refId === requestId;
+    const oldLive = liveIntervals(oldSnap.data() && oldSnap.data().intervals,
+        at).filter((iv) => !own(iv));
+    const newLive = sameDoc ? oldLive : liveIntervals(
+        newSnap.data() && newSnap.data().intervals, at);
+    if (newLive.some((iv) => overlaps(iv, newStart, newEnd))) {
+      throw failure("failed-precondition", "SLOT_TAKEN",
+          "That slot was just taken. Your original booking is unchanged.");
+    }
+    const moved = {
+      start: Timestamp.fromMillis(newStart),
+      end: Timestamp.fromMillis(newEnd),
+      kind: "booking",
+      refId: requestId,
+    };
+    const bump = {version: FieldValue.increment(1)};
+    if (sameDoc) {
+      tx.set(oldRef, {intervals: [...oldLive, moved], ...bump}, {merge: true});
+    } else {
+      tx.set(oldRef, {intervals: oldLive, ...bump}, {merge: true});
+      tx.set(newRef, {
+        barberId: apt.barberId,
+        date: sgDateKey(newStart),
+        intervals: [...newLive, moved],
+        ...bump,
+      }, {merge: true});
+    }
+    tx.update(aptRef, {start: moved.start, end: moved.end});
+    tx.set(db.collection("auditLog").doc(), auditRecord({
+      apt, actorUid: uid, role: "customer", action: "reschedule",
+      from: "CONFIRMED", to: "CONFIRMED", now: at}));
+    return summary({...apt, start: moved.start, end: moved.end});
+  });
+}
+
+module.exports = {
+  holdSlot, confirmBooking, releaseHold, cancelBooking, reschedule,
+  isLate, requireFreshCustomer,
+};

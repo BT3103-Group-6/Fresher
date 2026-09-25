@@ -187,6 +187,7 @@ async function onChooseAnother() {
       </dl>
       <p class="hint">{{ noticeText }}</p>
       <p class="hint">Prototype note: SMS reminders are mocked, so no confirmation text is sent.</p>
+      <p><router-link :to="{ name: 'my-bookings' }">Manage my bookings</router-link></p>
     </template>
 
     <template v-else>

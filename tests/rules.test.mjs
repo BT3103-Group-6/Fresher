@@ -118,6 +118,50 @@ describe('no client writes to server-owned data', () => {
   })
 })
 
+describe('FR-04/05 cancellation and rescheduling data', () => {
+  beforeEach(() => env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'customers/cust1/shopStats/a'), { lateCancels: 1 })
+    await setDoc(doc(ctx.firestore(), 'customers/cust2/shopStats/a'), { lateCancels: 0 })
+  }))
+  it('a customer cannot cancel, move or flag their own appointment from the client', async () => {
+    const ref = () => doc(customer('cust1'), 'appointments/apt1')
+    await assertFails(updateDoc(ref(), { status: 'CANCELLED' }))
+    await assertFails(updateDoc(ref(), { status: 'CANCELLED', lateCancel: false }))
+    await assertFails(updateDoc(ref(), { start: new Date('2030-01-01T02:00:00Z') }))
+    await assertFails(updateDoc(ref(), { lateCancelAttempted: false }))
+    await assertFails(deleteDoc(ref()))
+  })
+  it('a customer cannot list or read another customer\'s appointments', async () => {
+    await assertFails(getDocs(query(collection(customer('cust1'), 'appointments'), where('customerId', '==', 'cust2'))))
+    await assertFails(getDoc(doc(customer('cust1'), 'appointments/apt2')))
+  })
+  it('a customer reads only their own shopStats and cannot write them', async () => {
+    await assertSucceeds(getDoc(doc(customer('cust1'), 'customers/cust1/shopStats/a')))
+    await assertFails(getDoc(doc(customer('cust1'), 'customers/cust2/shopStats/a')))
+    await assertFails(setDoc(doc(customer('cust1'), 'customers/cust1/shopStats/a'), { lateCancels: 0 }))
+    await assertFails(updateDoc(doc(customer('cust1'), 'customers/cust1/shopStats/a'), { lateCancels: 0 }))
+  })
+  it('staff cannot read customer shopStats', async () => {
+    await assertFails(getDoc(doc(owner('a'), 'customers/cust1/shopStats/a')))
+    await assertFails(getDoc(doc(barber('a'), 'customers/cust1/shopStats/a')))
+  })
+  it('nobody can change an appointment or the schedule from the client, including other shops\' staff', async () => {
+    for (const db of [owner('a'), barber('a'), owner('b'), barber('b'), customer('cust1'), anon()]) {
+      await assertFails(updateDoc(doc(db, 'appointments/apt1'), { status: 'CANCELLED' }))
+      await assertFails(updateDoc(doc(db, 'shops/a/schedules/x_20260101'), { intervals: [] }))
+    }
+  })
+  it('audit records of cancellations are readable by their own shop only, and never writable', async () => {
+    await env.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore(), 'auditLog/e2'), { shopId: 'a', bookingId: 'apt1', action: 'lateCancelRefused' }))
+    await assertSucceeds(getDoc(doc(owner('a'), 'auditLog/e2')))
+    await assertFails(getDoc(doc(owner('b'), 'auditLog/e2')))
+    await assertFails(getDoc(doc(customer('cust1'), 'auditLog/e2')))
+    await assertFails(setDoc(doc(customer('cust1'), 'auditLog/e3'), { shopId: 'a', action: 'cancel' }))
+    await assertFails(updateDoc(doc(owner('a'), 'auditLog/e2'), { action: 'cancel' }))
+  })
+})
+
 describe('shop configuration writes', () => {
   it('owner writes valid services in own shop only', async () => {
     await assertSucceeds(setDoc(doc(owner('a'), 'shops/a/services/s2'), service))
