@@ -97,6 +97,7 @@ async function onSignOut() {
       <div v-show="accountOpen" id="account-menu" class="account-menu" role="group" aria-label="Account">
         <p class="account-email">{{ email }}</p>
         <p class="account-role">Role: {{ roleLabel }}</p>
+        <RouterLink :to="{ name: 'discover' }" class="account-link">View customer site</RouterLink>
         <button type="button" class="btn secondary header-btn" @click="onSignOut">Sign out</button>
       </div>
     </div>

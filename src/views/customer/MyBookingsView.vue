@@ -323,7 +323,7 @@ async function onMove(b) {
 <template>
   <main>
     <h1>My bookings</h1>
-    <p class="hint"><router-link :to="{ name: 'waitlist' }">My waitlist</router-link></p>
+    <p class="waitlist-link">On a waitlist? <router-link :to="{ name: 'waitlist' }">See my waitlist entries and offers</router-link></p>
 
     <p v-if="!online" class="banner" role="alert">You appear to be offline. Reconnect to continue.</p>
     <p v-if="formError" class="banner" role="alert">{{ formError }}</p>

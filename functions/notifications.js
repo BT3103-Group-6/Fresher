@@ -218,6 +218,18 @@ function offerTask(apt, entryId, now) {
 }
 
 /**
+ * @param {string} path Path in the customer app, for example "/my-bookings".
+ * @return {string} Absolute link for a message. The base comes from
+ *   APP_BASE_URL; otherwise the Hosting emulator, or a placeholder (L37).
+ */
+function appLink(path) {
+  const base = process.env.APP_BASE_URL ||
+    (process.env.FUNCTIONS_EMULATOR === "true" ?
+      "http://localhost:5002" : "https://fresher.example");
+  return `${base.replace(/\/+$/, "")}${path}`;
+}
+
+/**
  * @param {string} type Task type.
  * @param {number} start Appointment start (ms).
  * @param {number} delayMin Projected delay in minutes (delay type only).
@@ -229,21 +241,25 @@ function messageBody(type, start, delayMin) {
     month: "short", hour: "numeric", minute: "2-digit", hour12: true,
   }).format(new Date(start));
   if (type === "confirmation") {
-    return `Fresher: your booking is confirmed for ${when}.`;
+    return `Fresher: your booking is confirmed for ${when}. ` +
+      `Manage it: ${appLink("/my-bookings")}`;
   }
   if (type === "delay") {
     return `Fresher: your barber is running about ${delayMin} minutes ` +
       `behind, so your appointment on ${when} may start late. Your booking ` +
-      "time has not changed; you can cancel or reschedule in the app.";
+      "time has not changed; you can cancel or reschedule at " +
+      `${appLink("/my-bookings")}`;
   }
   if (type === "waitlistOffer") {
     return `Fresher: a slot opened on your waitlist, ${when}. ` +
-      "Open the app and claim it within 15 minutes.";
+      `Claim it within 15 minutes: ${appLink("/waitlist")}`;
   }
   if (type === "reminder24h") {
-    return `Fresher reminder: your appointment is in 24 hours, ${when}.`;
+    return `Fresher reminder: your appointment is in 24 hours, ${when}. ` +
+      `Manage it: ${appLink("/my-bookings")}`;
   }
-  return `Fresher reminder: your appointment is in 2 hours, ${when}.`;
+  return `Fresher reminder: your appointment is in 2 hours, ${when}. ` +
+    `Manage it: ${appLink("/my-bookings")}`;
 }
 
 module.exports = {
