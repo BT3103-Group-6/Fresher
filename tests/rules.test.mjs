@@ -1,7 +1,7 @@
 import { after, before, beforeEach, describe, it } from 'node:test'
 import { readFileSync } from 'node:fs'
 import { assertFails, assertSucceeds, initializeTestEnvironment } from '@firebase/rules-unit-testing'
-import { collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, setLogLevel, updateDoc, where } from 'firebase/firestore'
+import { collection, deleteDoc, doc, endAt, getDoc, getDocs, orderBy, query, setDoc, setLogLevel, startAt, updateDoc, where } from 'firebase/firestore'
 
 // Denied writes are expected here; keep the SDK from logging each one.
 setLogLevel('silent')
@@ -15,7 +15,7 @@ const admin = () => env.authenticatedContext('admin', { admin: true }).firestore
 const customer = (uid) => env.authenticatedContext(uid).firestore()
 const anon = () => env.unauthenticatedContext().firestore()
 
-const service = { name: 'Cut', durationMin: 30, priceCents: 2500, active: true }
+const service = { name: 'Cut', category: 'haircut', durationMin: 30, priceCents: 2500, active: true }
 const barberDoc = { displayName: 'Ali', active: true, serviceIds: ['s1'], workingHours: { mon: [{ start: '09:00', end: '18:00' }] } }
 
 before(async () => {
@@ -56,6 +56,19 @@ describe('public reads', () => {
     await assertFails(getDoc(doc(anon(), 'shops/p/services/s1')))
     await assertFails(getDoc(doc(anon(), 'shops/p/barbers/b1')))
     await assertSucceeds(getDoc(doc(owner('p'), 'shops/p')))
+  })
+})
+
+describe('FR-01 discovery query', () => {
+  it('lets anyone run the verified-shop geohash query but not an unfiltered one', async () => {
+    const shops = collection(anon(), 'shops')
+    const q = query(shops, where('status', '==', 'verified'), orderBy('geohash'), startAt('a'), endAt('a~'))
+    await assertSucceeds(getDocs(q))
+    await assertFails(getDocs(query(shops, orderBy('geohash'), startAt('a'), endAt('a~'))))
+  })
+  it('lets anyone list a verified shop\'s schedules by date but not a pending shop\'s', async () => {
+    await assertSucceeds(getDocs(query(collection(anon(), 'shops/a/schedules'), where('date', '==', '20260101'))))
+    await assertFails(getDocs(query(collection(anon(), 'shops/p/schedules'), where('date', '==', '20260101'))))
   })
 })
 
@@ -178,6 +191,18 @@ describe('shop configuration writes', () => {
     await assertFails(setDoc(doc(db, 'shops/a/services/s2'), { ...service, name: '' }))
     await assertFails(setDoc(doc(db, 'shops/a/services/s2'), { ...service, extra: true }))
   })
+  it('requires a known service category (FR-01)', async () => {
+    const db = owner('a')
+    const { category, ...noCategory } = service
+    await assertFails(setDoc(doc(db, 'shops/a/services/s2'), noCategory))
+    await assertFails(setDoc(doc(db, 'shops/a/services/s2'), { ...service, category: 'spa' }))
+    await assertFails(setDoc(doc(db, 'shops/a/services/s2'), { ...service, category: 7 }))
+    for (const c of ['haircut', 'beard', 'shave', 'colour', 'perm', 'kids', 'other']) {
+      await assertSucceeds(setDoc(doc(db, 'shops/a/services/s2'), { ...service, category: c }))
+    }
+    await assertSucceeds(updateDoc(doc(db, 'shops/a/services/s1'), { category: 'beard' }))
+    await assertFails(updateDoc(doc(db, 'shops/a/services/s1'), { category: 'spa' }))
+  })
   it('owner deactivates and reactivates a service', async () => {
     await assertSucceeds(updateDoc(doc(owner('a'), 'shops/a/services/s1'), { active: false }))
     await assertSucceeds(updateDoc(doc(owner('a'), 'shops/a/services/s1'), { active: true }))
@@ -211,6 +236,20 @@ describe('shop configuration writes', () => {
     await assertSucceeds(updateDoc(doc(admin(), 'shops/p'), { status: 'verified' }))
     await assertFails(updateDoc(doc(admin(), 'shops/p'), { status: 'verified', name: 'x' }))
     await assertFails(updateDoc(doc(admin(), 'shops/p'), { name: 'x' }))
+  })
+  it('no client writes the trigger-owned shop summary fields (FR-01)', async () => {
+    const summary = { priceMin: 100, priceMax: 200, serviceTypes: ['haircut'], minDurationMin: 15 }
+    for (const [field, value] of Object.entries(summary)) {
+      await assertFails(updateDoc(doc(owner('a'), 'shops/a'), { [field]: value }))
+      await assertFails(updateDoc(doc(owner('b'), 'shops/a'), { [field]: value }))
+      await assertFails(updateDoc(doc(barber('a'), 'shops/a'), { [field]: value }))
+      await assertFails(updateDoc(doc(admin(), 'shops/a'), { [field]: value }))
+      await assertFails(updateDoc(doc(customer('cust1'), 'shops/a'), { [field]: value }))
+    }
+    await assertFails(updateDoc(doc(owner('a'), 'shops/a'), { noticeMins: 60, ...summary }))
+    await assertFails(setDoc(doc(owner('a'), 'shops/a'), { name: 'a', status: 'verified', tz: 'Asia/Singapore', ...summary }))
+    // Ordinary profile edits still work alongside.
+    await assertSucceeds(updateDoc(doc(owner('a'), 'shops/a'), { name: 'Renamed', noticeMins: 90 }))
   })
   it('does not allow creating shops from the client', async () => {
     await assertFails(setDoc(doc(owner('a'), 'shops/new'), { status: 'verified' }))

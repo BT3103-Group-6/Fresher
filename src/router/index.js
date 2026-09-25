@@ -5,7 +5,8 @@ import { draft } from '@/stores/booking'
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', redirect: '/staff/config' },
+    // Customer home: discover shops (FR-01). Staff sign in at /login.
+    { path: '/', name: 'discover', component: () => import('@/views/customer/DiscoverView.vue') },
     // Customer booking (FR-02, FR-03). No sign-in needed until the OTP step.
     { path: '/shops/:shopId', name: 'book', component: () => import('@/views/customer/ShopView.vue') },
     {

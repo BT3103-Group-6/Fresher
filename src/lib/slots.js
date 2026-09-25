@@ -69,3 +69,27 @@ export function toIntervals(raw) {
     holdExpiresAt: iv.holdExpiresAt ? iv.holdExpiresAt.toMillis() : undefined,
   }))
 }
+
+/**
+ * Bookable start times (ms) across barbers for one date, shared by UI-C2 and the UI-C1 next-slot lookup.
+ * Only active barbers offering the service count; shop hours, working hours, busy intervals and past
+ * times are handled by freeSlots.
+ * @param {{barbers: object[], shopHours?: object, dateKey: string, durationMin: number,
+ *   schedules: Record<string, object[]>, now?: number}} a
+ */
+export function slotsForBarbers({ barbers, shopHours, dateKey, durationMin, schedules, now = Date.now() }) {
+  const day = weekdayOf(dateKey)
+  const all = new Set()
+  for (const b of barbers) {
+    if (b.active === false) continue
+    freeSlots({
+      ranges: b.workingHours?.[day],
+      shopRanges: shopHours?.[day],
+      dateKey,
+      durationMin,
+      intervals: schedules[b.id],
+      now,
+    }).forEach((s) => all.add(s))
+  }
+  return [...all].sort((a, b) => a - b)
+}

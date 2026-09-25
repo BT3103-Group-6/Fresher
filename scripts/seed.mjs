@@ -3,7 +3,11 @@
 import { initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
 import { getFirestore } from 'firebase-admin/firestore'
+import { createRequire } from 'node:module'
 import { geohashForLocation } from 'geofire-common'
+
+// Same summary the services trigger computes, so seeded shops look identical with or without the Functions emulator.
+const { summarizeServices } = createRequire(import.meta.url)('../functions/discovery.js')
 
 if (!process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_AUTH_EMULATOR_HOST) {
   console.error(
@@ -32,13 +36,11 @@ const shops = [
     status: 'verified',
     latePolicy: 'block',
     open: hours(['tue', 'wed', 'thu', 'fri', 'sat', 'sun'], '10:00', '19:00'),
-    priceMin: 1500,
-    priceMax: 6000,
     services: [
-      ['gents-cut', 'Gents haircut', 30, 2500],
-      ['fade', 'Skin fade', 45, 3500],
-      ['beard', 'Beard trim', 15, 1500],
-      ['cut-beard', 'Haircut and beard', 45, 4000],
+      ['gents-cut', 'Gents haircut', 'haircut', 30, 2500],
+      ['fade', 'Skin fade', 'haircut', 45, 3500],
+      ['beard', 'Beard trim', 'beard', 15, 1500],
+      ['cut-beard', 'Haircut and beard', 'haircut', 45, 4000],
     ],
     barbers: [
       ['ah-meng', 'Meng', ['gents-cut', 'fade', 'beard', 'cut-beard']],
@@ -55,12 +57,10 @@ const shops = [
     status: 'verified',
     latePolicy: 'flag',
     open: hours(['mon', 'tue', 'wed', 'thu', 'fri', 'sat'], '11:00', '20:00'),
-    priceMin: 1200,
-    priceMax: 3000,
     services: [
-      ['kids-cut', 'Kids haircut', 20, 1200],
-      ['gents-cut', 'Gents haircut', 30, 1800],
-      ['shave', 'Classic shave', 20, 1500],
+      ['kids-cut', 'Kids haircut', 'kids', 20, 1200],
+      ['gents-cut', 'Gents haircut', 'haircut', 30, 1800],
+      ['shave', 'Classic shave', 'shave', 20, 1500],
     ],
     barbers: [['rizal', 'Rizal', ['kids-cut', 'gents-cut', 'shave']]],
   },
@@ -74,13 +74,11 @@ const shops = [
     status: 'verified',
     latePolicy: 'block',
     open: hours(weekdays, '09:00', '21:00'),
-    priceMin: 1800,
-    priceMax: 8000,
     services: [
-      ['gents-cut', 'Gents haircut', 30, 2200],
-      ['perm', 'Textured perm', 90, 8000],
-      ['colour', 'Hair colour', 60, 6500],
-      ['wash-style', 'Wash and style', 20, 1800],
+      ['gents-cut', 'Gents haircut', 'haircut', 30, 2200],
+      ['perm', 'Textured perm', 'perm', 90, 8000],
+      ['colour', 'Hair colour', 'colour', 60, 6500],
+      ['wash-style', 'Wash and style', 'other', 20, 1800],
     ],
     barbers: [
       ['jun-wei', 'Jun Wei', ['gents-cut', 'wash-style', 'perm']],
@@ -98,9 +96,7 @@ const shops = [
     status: 'pending',
     latePolicy: 'block',
     open: hours(['sat', 'sun'], '10:00', '18:00'),
-    priceMin: 2000,
-    priceMax: 2000,
-    services: [['gents-cut', 'Gents haircut', 30, 2000]],
+    services: [['gents-cut', 'Gents haircut', 'haircut', 30, 2000]],
     barbers: [['newcomer', 'Newcomer', ['gents-cut']]],
   },
 ]
@@ -126,16 +122,17 @@ for (const shop of shops) {
   await shopRef.set({
     ...profile,
     geohash: geohashForLocation([shop.lat, shop.lng]),
+    ...summarizeServices(services.map(([, , category, durationMin, priceCents]) => ({ category, durationMin, priceCents, active: true }))),
     openingHours: open,
     tz: 'Asia/Singapore',
     noticeMins: 120,
   })
 
-  for (const [serviceId, name, durationMin, priceCents] of services) {
+  for (const [serviceId, name, category, durationMin, priceCents] of services) {
     await shopRef
       .collection('services')
       .doc(serviceId)
-      .set({ name, durationMin, priceCents, active: true })
+      .set({ name, category, durationMin, priceCents, active: true })
   }
 
   for (const [barberId, displayName, serviceIds] of barbers) {

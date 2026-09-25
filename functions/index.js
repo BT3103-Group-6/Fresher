@@ -1,5 +1,7 @@
 const {setGlobalOptions} = require("firebase-functions");
 const {HttpsError, onCall} = require("firebase-functions/https");
+const {onDocumentWritten} = require("firebase-functions/firestore");
+const {defineSecret} = require("firebase-functions/params");
 const {initializeApp} = require("firebase-admin/app");
 const {getAuth} = require("firebase-admin/auth");
 const {getFirestore} = require("firebase-admin/firestore");
@@ -130,3 +132,27 @@ exports.releaseHold =
 // cancelBooking also accepts staff tokens (never late).
 exports.cancelBooking = onCall((request) => booking.cancelBooking(request));
 exports.reschedule = onCall((request) => booking.reschedule(request));
+
+// FR-01: shop discovery. geocode is unauthenticated (discovery comes before
+// sign-in); the OneMap token is a secret and never leaves the function. With
+// no token it uses a small mock lookup in the emulator only (decisions A11,
+// L12); elsewhere it returns "unavailable".
+const onemapToken = defineSecret("ONEMAP_TOKEN");
+const geocoder = require("./geocode");
+exports.geocode = onCall({secrets: [onemapToken]}, (request) =>
+  geocoder.geocode(request.data, onemapToken.value()));
+
+// FR-01: keep the trigger-owned shop summary (priceMin, priceMax, serviceTypes,
+// minDurationMin) in step with the shop's services. Security Rules stop
+// clients writing these fields.
+const discovery = require("./discovery");
+exports.summarizeShopServices = onDocumentWritten(
+    "shops/{shopId}/services/{serviceId}", async (event) => {
+      const db = getFirestore();
+      const shopRef = db.doc(`shops/${event.params.shopId}`);
+      const [shop, services] = await Promise.all([
+        shopRef.get(), shopRef.collection("services").get()]);
+      if (!shop.exists) return;
+      await shopRef.update(
+          discovery.summarizeServices(services.docs.map((d) => d.data())));
+    });

@@ -7,7 +7,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { collection, doc, getDoc, onSnapshot, query, where } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import { db, functions } from '@/firebase'
-import { dateOptions, formatTime, freeSlots, toIntervals, weekdayOf } from '@/lib/slots'
+import { dateOptions, formatTime, slotsForBarbers, toIntervals } from '@/lib/slots'
 import { draft, ensureRequestId, newAttempt, resetDraft } from '@/stores/booking'
 
 const route = useRoute()
@@ -67,19 +67,14 @@ watch(
 const ready = computed(() => candidates.value.length > 0 && candidates.value.every((b) => loaded[b.id]))
 const slots = computed(() => {
   if (!ready.value) return []
-  const day = weekdayOf(draft.dateKey)
-  const all = new Set()
-  for (const b of candidates.value) {
-    freeSlots({
-      ranges: b.workingHours?.[day],
-      shopRanges: shop.value?.openingHours?.[day],
-      dateKey: draft.dateKey,
-      durationMin: service.value.durationMin,
-      intervals: schedules[b.id],
-      now: now.value,
-    }).forEach((s) => all.add(s))
-  }
-  return [...all].sort((a, b) => a - b)
+  return slotsForBarbers({
+    barbers: candidates.value,
+    shopHours: shop.value?.openingHours,
+    dateKey: draft.dateKey,
+    durationMin: service.value.durationMin,
+    schedules,
+    now: now.value,
+  })
 })
 
 // The chosen slot was taken (or aged out) while the customer was looking at the list.

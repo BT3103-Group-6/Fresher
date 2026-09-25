@@ -36,8 +36,10 @@ service cloud.firestore {
     match /shops/{shopId} {
       allow read: if resource.data.status == 'verified' || isStaffOf(shopId) || isAdmin();
       // Shops are created by seed/functions only. Owners edit the profile but never status;
-      // the platform admin may change only status (shop verification).
-      allow update: if (isOwnerOf(shopId) && !affected().hasAny(['status', 'tz']))
+      // the platform admin may change only status (shop verification). priceMin, priceMax,
+      // serviceTypes and minDurationMin are derived from services by a trigger (FR-01), so no client writes them.
+      allow update: if (isOwnerOf(shopId)
+          && !affected().hasAny(['status', 'tz', 'priceMin', 'priceMax', 'serviceTypes', 'minDurationMin']))
         || (isAdmin() && affected().hasOnly(['status']));
 
       match /members/{uid} {
@@ -47,9 +49,10 @@ service cloud.firestore {
       match /services/{serviceId} {
         allow read: if isStaffOf(shopId) || shopIsVerified(shopId);
         allow create, update: if isOwnerOf(shopId)
-          && request.resource.data.keys().hasOnly(['name', 'durationMin', 'priceCents', 'active'])
+          && request.resource.data.keys().hasOnly(['name', 'category', 'durationMin', 'priceCents', 'active'])
           && request.resource.data.name is string
           && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 80
+          && request.resource.data.category in ['haircut', 'beard', 'shave', 'colour', 'perm', 'kids', 'other']
           && request.resource.data.durationMin is int
           && request.resource.data.durationMin > 0 && request.resource.data.durationMin % 5 == 0
           && request.resource.data.priceCents is int && request.resource.data.priceCents >= 0

@@ -30,7 +30,7 @@ How each requirement is delivered: the screen it appears on, and the logic behin
 
 | Req ID | Requirement | Screen | Interaction and implementation logic |
 |---|---|---|---|
-| FR-01 | Shop discovery | UI-C1 Discover shops | Postal code is sent to the `geocode` function (OneMap, token server-side). Shops within 3 km are found by geohash range query, then filtered by exact distance and service type. Location permission denied → postal code field shown. |
+| FR-01 | Shop discovery | UI-C1 Discover shops | Postal code is sent to the `geocode` function (OneMap, token server-side). Shops within 3 km are found by geohash range query (`status == verified`), then filtered by exact distance and service type. Location permission denied → postal code field shown. Next slot is computed client-side for the nearest 10 shops (3 days, decisions A11). Without `ONEMAP_TOKEN`, `geocode` uses a mock lookup in the emulator only and is `unavailable` elsewhere (L12). |
 | FR-02 | Real-time availability | UI-C2 Select service and slot | Vue listens to the barber-day `schedules` doc and computes free slots from working hours, service duration and busy intervals. A taken slot returns SLOT_TAKEN and the list refreshes. |
 | FR-03 | Guest booking | UI-C3 Verify and confirm | `holdSlot` holds the slot for 10 min; Firebase Phone Auth sends the OTP; `confirmBooking` moves HELD → CONFIRMED. Three failed OTPs or expiry release the hold. |
 | FR-04 | Cancellation and rescheduling | UI-C4 My bookings | Fresh OTP, then `cancelBooking` or `reschedule`. Reschedule adds the new interval and removes the old one in one transaction; barber gets a change alert. |
@@ -70,13 +70,14 @@ Non-functional requirements are met across the system:
 `.../` = sub-collection of `shops/{shopId}`. Money is stored as integer cents (SGD). Times are Firestore Timestamps (UTC).
 
 ### shops/{shopId}
-`name, address, postalCode, lat, lng, geohash (FR-01), openingHours, tz = "Asia/Singapore", noticeMins, latePolicy ("block" | "flag") (FR-05), priceMin, priceMax, status ("pending" | "verified" | "suspended")`
+`name, address, postalCode, lat, lng, geohash (FR-01), openingHours, tz = "Asia/Singapore", noticeMins, latePolicy ("block" | "flag") (FR-05), status ("pending" | "verified" | "suspended")`
+Trigger-owned summary (FR-01, decisions A11): `priceMin, priceMax` (cents), `serviceTypes[]`, `minDurationMin`, recomputed from active services by `summarizeShopServices` on every service write. Security Rules deny client writes to them.
 
 ### .../members/{uid}
 `role ("owner" | "barber"), barberId (if barber)`
 
 ### .../services/{serviceId}
-`name, durationMin (multiple of 5), priceCents, active`
+`name, category ("haircut" | "beard" | "shave" | "colour" | "perm" | "kids" | "other"), durationMin (multiple of 5), priceCents, active`
 
 ### .../barbers/{barberId}
 `displayName, active, serviceIds[], workingHours`
