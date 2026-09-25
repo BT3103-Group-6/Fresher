@@ -8,6 +8,7 @@ import { collection, doc, getDoc, onSnapshot, query, where } from 'firebase/fire
 import { httpsCallable } from 'firebase/functions'
 import { db, functions } from '@/firebase'
 import { dateOptions, formatTime, slotsForBarbers, toIntervals } from '@/lib/slots'
+import { resolveRebook } from '@/lib/history'
 import { draft, ensureRequestId, newAttempt, resetDraft } from '@/stores/booking'
 
 const route = useRoute()
@@ -23,6 +24,8 @@ const schedules = reactive({}) // barberId -> intervals (ms), for the chosen dat
 const loaded = reactive({}) // barberId -> true once its schedule listener has answered
 const loadError = ref('')
 const formError = ref('')
+const rebookNotes = ref([])
+const listed = reactive({ services: false, barbers: false })
 const errors = ref({})
 const pending = ref(false)
 const online = ref(navigator.onLine)
@@ -84,6 +87,19 @@ watch(slots, (list) => {
     formError.value = 'That time is no longer available. Please choose another.'
   }
 })
+// FR-11: a Rebook from History pre-selects service and barber. Once both live lists have arrived (they hold
+// active items only), whatever is no longer offered is dropped and the reason shown. No time is chosen.
+watch(() => listed.services && listed.barbers, (both) => {
+  const wanted = draft.rebook
+  if (!both || !wanted) return
+  draft.rebook = null
+  const service = services.value.find((s) => s.id === wanted.serviceId) ?? null
+  const barber = barbers.value.find((b) => b.id === wanted.barberId) ?? null
+  const r = resolveRebook({ serviceId: wanted.serviceId, barberId: wanted.barberId, service, barber })
+  draft.serviceId = r.serviceId
+  draft.barberId = r.barberId
+  rebookNotes.value = r.notes
+})
 // A different selection is a different attempt, so it gets its own requestId.
 watch(() => [draft.serviceId, draft.barberId, draft.start], newAttempt)
 watch(() => draft.serviceId, () => { errors.value = {}; if (draft.barberId !== 'any' && !offering.value.some((b) => b.id === draft.barberId)) draft.barberId = 'any' })
@@ -108,9 +124,11 @@ onMounted(async () => {
   unsubs.push(
     onSnapshot(query(collection(db, `shops/${shopId}/services`), where('active', '==', true)), (snap) => {
       services.value = snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name))
+      listed.services = true
     }, onError),
     onSnapshot(query(collection(db, `shops/${shopId}/barbers`), where('active', '==', true)), (snap) => {
       barbers.value = snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => a.displayName.localeCompare(b.displayName))
+      listed.barbers = true
     }, onError),
   )
   if (draft.notice) { formError.value = draft.notice; draft.notice = '' }
@@ -175,6 +193,9 @@ async function onContinue() {
       </p>
       <p v-if="loadError" class="banner" role="alert">{{ loadError }}</p>
       <p v-if="formError" class="banner" role="alert">{{ formError }}</p>
+      <div v-if="rebookNotes.length" class="hint" role="status">
+        <p v-for="n in rebookNotes" :key="n">{{ n }}</p>
+      </div>
 
       <form novalidate @submit.prevent="onContinue">
         <div class="field">

@@ -81,8 +81,10 @@ service cloud.firestore {
       match /blocks/{blockId} {
         allow read: if isOwnerOf(shopId) || isBarberOf(shopId, resource.data.barberId);
       }
+      // FR-14: trigger-written revenue and no-show counters, owner only (decisions A7).
+      // statContrib (the trigger's per-appointment ledger) has no rule, so it is denied to clients.
       match /dailyStats/{day} {
-        allow read: if isStaffOf(shopId);
+        allow read: if isOwnerOf(shopId);
       }
       match /queue/{entryId} {
         allow read: if isStaffOf(shopId);

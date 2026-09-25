@@ -1,15 +1,18 @@
 <script setup>
-// UI-C4 My bookings (FR-04, FR-05). A fresh OTP on the booking's mobile number comes first (the server
-// re-checks it), then the customer's upcoming bookings are listed and can be cancelled or moved.
+// UI-C4 My bookings (FR-04, FR-05, FR-11). A fresh OTP on the booking's mobile number comes first (the server
+// re-checks it), then the customer's upcoming bookings are listed and can be cancelled or moved, and the History
+// tab lists past ones with a Rebook action (decisions A13). Both tabs come from one customerId query.
 // cancelBooking and reschedule are the authority: the notice window and late policy shown here are a
 // preview of what the server decides.
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { collection, doc, getDoc, onSnapshot, query, where } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
+import { useRouter } from 'vue-router'
 import { db, functions } from '@/firebase'
 import { dateOptions, formatDate, formatTime, freeSlots, sgDateKey, toIntervals, weekdayOf } from '@/lib/slots'
 import { normalizeSgMobile, otpErrorMessage, sendOtp, verifyOtp } from '@/lib/customerAuth'
-import { draft } from '@/stores/booking'
+import { historyItems, historyLabel, resolveRebook, upcomingItems } from '@/lib/history'
+import { draft, resetDraft } from '@/stores/booking'
 
 const cancelBooking = httpsCallable(functions, 'cancelBooking')
 const reschedule = httpsCallable(functions, 'reschedule')
@@ -25,7 +28,14 @@ const pending = ref(false)
 const online = ref(navigator.onLine)
 const now = ref(Date.now())
 
-const bookings = ref([])
+const router = useRouter()
+const HISTORY_PAGE = 20
+const tab = ref('upcoming') // upcoming | history
+const allAppointments = ref([])
+const historyShown = ref(HISTORY_PAGE)
+const bookings = computed(() => upcomingItems(allAppointments.value, now.value))
+const historyAll = computed(() => historyItems(allAppointments.value, now.value))
+const history = computed(() => historyAll.value.slice(0, historyShown.value))
 const meta = reactive({}) // shopId -> { shop, services, barbers }
 const loadingList = ref(true)
 
@@ -68,34 +78,50 @@ onUnmounted(() => {
   unsubSchedule?.()
 })
 
-// Fetches whatever names this shop's bookings still need (shop, services, barbers), once each.
-async function loadMeta(shopId) {
-  const entry = (meta[shopId] ??= { shop: null, services: {}, barbers: {}, asked: new Set() })
+// Fetches whatever names these bookings still need (shop, services, barbers), once each. A shop that is not
+// verified cannot be read by customers, which is recorded as shopUnavailable; a deleted service or barber is null.
+async function loadMeta(shopId, items) {
+  meta[shopId] ??= { shop: null, shopUnavailable: false, services: {}, barbers: {}, asked: new Set() }
+  const entry = meta[shopId] // the reactive proxy, so rebook plans update when a fetch lands
   const ref = doc(db, `shops/${shopId}`)
   const fetches = []
   const ask = (key, run) => { if (!entry.asked.has(key)) { entry.asked.add(key); fetches.push(run().catch(() => entry.asked.delete(key))) } }
-  ask('shop', async () => { entry.shop = (await getDoc(ref)).data() })
-  for (const b of bookings.value.filter((x) => x.shopId === shopId)) {
-    ask(`s:${b.serviceId}`, async () => { entry.services[b.serviceId] = (await getDoc(doc(ref, 'services', b.serviceId))).data() })
-    ask(`b:${b.barberId}`, async () => { entry.barbers[b.barberId] = (await getDoc(doc(ref, 'barbers', b.barberId))).data() })
+  ask('shop', async () => {
+    try {
+      const snap = await getDoc(ref)
+      entry.shop = snap.data() ?? null
+      entry.shopUnavailable = !snap.exists()
+    } catch (err) {
+      if (err.code !== 'permission-denied') throw err
+      entry.shopUnavailable = true
+    }
+  })
+  for (const b of items.filter((x) => x.shopId === shopId)) {
+    ask(`s:${b.serviceId}`, async () => { entry.services[b.serviceId] = (await getDoc(doc(ref, 'services', b.serviceId))).data() ?? null })
+    ask(`b:${b.barberId}`, async () => { entry.barbers[b.barberId] = (await getDoc(doc(ref, 'barbers', b.barberId))).data() ?? null })
   }
   await Promise.all(fetches)
 }
 
+// Upcoming always; History items only once that tab is opened, and only the ones shown (NFR-07).
+async function refreshMeta() {
+  const items = tab.value === 'history' ? [...bookings.value, ...history.value] : bookings.value
+  try {
+    await Promise.all([...new Set(items.map((b) => b.shopId))].map((id) => loadMeta(id, items)))
+  } catch {
+    formError.value = 'Could not load some booking details. Check your connection.'
+  }
+}
+watch([tab, historyShown], refreshMeta)
+
 function listen() {
   loadingList.value = true
   unsubList?.()
-  // Filtered by customerId only (no composite index); status and time are filtered here.
+  // Filtered by customerId only (no composite index); status and time are split into tabs in src/lib/history.js.
   unsubList = onSnapshot(query(collection(db, 'appointments'), where('customerId', '==', uid.value)), async (snap) => {
-    bookings.value = snap.docs
+    allAppointments.value = snap.docs
       .map((d) => ({ ...d.data(), id: d.id, start: d.data().start.toMillis(), end: d.data().end.toMillis() }))
-      .filter((b) => b.status === 'CONFIRMED' && b.end > Date.now())
-      .sort((a, b) => a.start - b.start)
-    try {
-      await Promise.all([...new Set(bookings.value.map((b) => b.shopId))].map(loadMeta))
-    } catch {
-      formError.value = 'Could not load some booking details. Check your connection.'
-    }
+    await refreshMeta()
     loadingList.value = false
   }, () => {
     loadingList.value = false
@@ -202,6 +228,43 @@ watch(moveSlots, (list) => {
   }
 })
 
+// What Rebook would pre-fill for a history item; null while its shop, service or barber is still loading.
+function rebookPlan(b) {
+  const entry = meta[b.shopId]
+  if (!entry || (!entry.shop && !entry.shopUnavailable)) return null
+  if (!entry.shopUnavailable && (!(b.serviceId in entry.services) || !(b.barberId in entry.barbers))) return null
+  return resolveRebook({
+    serviceId: b.serviceId,
+    barberId: b.barberId,
+    service: entry.services[b.serviceId] ?? null,
+    barber: entry.barbers[b.barberId] ?? null,
+    shopAvailable: !entry.shopUnavailable,
+  })
+}
+
+// Always starts from a clean draft (a stale one for the same shop must not survive); only the verified phone
+// carries over. UI-C2 re-checks against its live lists and picks no time, so slot availability still decides.
+function onRebook(b) {
+  const plan = rebookPlan(b)
+  if (plan && !plan.canRebook) return
+  resetDraft({
+    shopId: b.shopId,
+    serviceId: plan ? plan.serviceId : b.serviceId,
+    barberId: plan ? plan.barberId : b.barberId,
+    phone: phone.value,
+    rebook: { serviceId: b.serviceId, barberId: b.barberId },
+  })
+  router.push({ name: 'book', params: { shopId: b.shopId } })
+}
+
+const TABS = ['upcoming', 'history']
+function onTabKey(e) {
+  const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key]
+  if (!step) return
+  tab.value = TABS[(TABS.indexOf(tab.value) + step + TABS.length) % TABS.length]
+  document.getElementById(`tab-${tab.value}`)?.focus()
+}
+
 function reasonMessage(err) {
   switch (err.details?.reason) {
     case 'LATE_CANCEL_BLOCKED': return 'This booking is inside the cancellation window, so it cannot be cancelled online. Please contact the shop.'
@@ -286,9 +349,43 @@ async function onMove(b) {
     </form>
 
     <template v-else>
-      <p v-if="loadingList" class="hint">Loading your bookings…</p>
-      <p v-else-if="!bookings.length">You have no upcoming bookings.</p>
+      <div class="tabs" role="tablist" aria-label="My bookings" @keydown="onTabKey">
+        <button id="tab-upcoming" class="tab" type="button" role="tab" aria-controls="panel-bookings"
+          :aria-selected="tab === 'upcoming'" :tabindex="tab === 'upcoming' ? 0 : -1" @click="tab = 'upcoming'">Upcoming</button>
+        <button id="tab-history" class="tab" type="button" role="tab" aria-controls="panel-bookings"
+          :aria-selected="tab === 'history'" :tabindex="tab === 'history' ? 0 : -1" @click="tab = 'history'">History</button>
+      </div>
 
+      <div id="panel-bookings" role="tabpanel" :aria-labelledby="`tab-${tab}`">
+      <p v-if="loadingList" class="hint">Loading your bookings…</p>
+      <p v-else-if="tab === 'upcoming' && !bookings.length">You have no upcoming bookings.</p>
+      <p v-else-if="tab === 'history' && !history.length">You have no past bookings yet.</p>
+
+      <template v-if="tab === 'history'">
+        <section v-for="b in history" :key="b.id" class="card" :aria-labelledby="`hh-${b.id}`">
+          <h2 :id="`hh-${b.id}`">{{ shopOf(b)?.name ?? (meta[b.shopId]?.shopUnavailable ? 'Shop no longer available' : 'Past booking') }}</h2>
+          <p class="badge" :class="{ off: b.status !== 'COMPLETED' }">Status: {{ historyLabel(b) }}</p>
+          <dl class="summary">
+            <dt>Service</dt><dd>{{ serviceOf(b)?.name ?? 'Not available' }} · {{ b.durationMin }} min</dd>
+            <dt>Barber</dt><dd>{{ barberOf(b)?.displayName ?? 'Not available' }}</dd>
+            <dt>When</dt><dd>{{ formatDate(b.start) }}, {{ formatTime(b.start) }}</dd>
+            <dt>Price</dt><dd>{{ money(b.priceCents) }}</dd>
+            <dt>Reference</dt><dd>{{ b.id.slice(0, 8).toUpperCase() }}</dd>
+          </dl>
+          <div v-if="rebookPlan(b)?.notes.length" class="hint" :id="`rb-${b.id}`">
+            <p v-for="n in rebookPlan(b).notes" :key="n">{{ n }}</p>
+          </div>
+          <div class="row-actions">
+            <button class="btn secondary" type="button" :disabled="pending || rebookPlan(b)?.canRebook === false"
+              :aria-describedby="rebookPlan(b)?.notes.length ? `rb-${b.id}` : undefined" @click="onRebook(b)">Rebook</button>
+          </div>
+        </section>
+        <button v-if="historyAll.length > historyShown" class="btn secondary" type="button" @click="historyShown += HISTORY_PAGE">
+          Show more
+        </button>
+      </template>
+
+      <template v-else>
       <section v-for="b in bookings" :key="b.id" class="card" :aria-labelledby="`h-${b.id}`">
         <h2 :id="`h-${b.id}`">{{ shopOf(b)?.name ?? 'Your booking' }}</h2>
         <p class="badge" role="status">Status: Confirmed</p>
@@ -355,6 +452,8 @@ async function onMove(b) {
           </div>
         </form>
       </section>
+      </template>
+      </div>
     </template>
 
     <div id="recaptcha-container"></div>

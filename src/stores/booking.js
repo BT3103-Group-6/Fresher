@@ -17,6 +17,7 @@ function blank() {
     name: '',
     phone: '',
     notice: '', // message shown when the user is sent back to UI-C2
+    rebook: null, // FR-11: { serviceId, barberId } from a History item, applied once by UI-C2 then cleared
   }
 }
 

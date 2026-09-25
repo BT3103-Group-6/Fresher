@@ -148,3 +148,22 @@ a.btn { color: #fff; }
 textarea { font: inherit; padding: 0.55rem 0.65rem; border: 1px solid #6b7375; border-radius: 6px; min-height: 44px; }
 input[type='date'] { font: inherit; padding: 0.55rem 0.65rem; border: 1px solid #6b7375; border-radius: 6px; min-height: 44px; }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0 0.75rem; }
+
+.tabs { display: flex; gap: 0.25rem; border-bottom: 1px solid var(--line); margin-bottom: 1rem; }
+.tab { background: none; border: 0; border-bottom: 3px solid transparent; padding: 0.6rem 1rem; font: inherit; font-weight: 600; color: #4d5558; cursor: pointer; min-height: 44px; }
+.tab[aria-selected='true'] { color: var(--teal-dark); border-bottom-color: var(--teal-dark); }
+
+/* UI-O2 shop dashboard (FR-14) */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: 0.75rem; margin: 0 0 1rem; }
+.tile { border: 1px solid var(--line); border-radius: 8px; padding: 0.75rem; }
+.tile dt { font-size: 0.85rem; color: #4d5558; }
+.tile dd { margin: 0.2rem 0 0; font-size: 1.5rem; font-weight: 700; color: var(--teal-dark); }
+.stat-table { width: 100%; border-collapse: collapse; }
+.stat-table th, .stat-table td { text-align: left; padding: 0.55rem 0.5rem; border-bottom: 1px solid var(--line); }
+@media (max-width: 600px) {
+  .stat-table thead { position: absolute; left: -9999px; }
+  .stat-table tr { display: block; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 0.75rem; padding: 0.4rem 0.6rem; }
+  .stat-table th[scope='row'] { display: block; border: 0; font-size: 1.05rem; }
+  .stat-table td { display: flex; justify-content: space-between; gap: 1rem; border: 0; padding: 0.25rem 0; }
+  .stat-table td::before { content: attr(data-label); font-weight: 600; }
+}

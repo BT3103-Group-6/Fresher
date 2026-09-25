@@ -40,10 +40,10 @@ How each requirement is delivered: the screen it appears on, and the logic behin
 | FR-08 | Personal time blocks | UI-B1 Barber schedule | `createBlock` adds a block interval to the schedule doc (and a `blocks` doc) in one transaction and returns any overlapping bookings and live holds instead of cancelling them; `removeBlock` undoes it. Barbers block only their own time, owners any barber in their shop; blocks are single-day and may not overlap another block (decisions A12). UI-B1 (`/staff/schedule`) shows the day and treats an expired HELD appointment as expired (L2). |
 | FR-09 | Automated reminders | UI-B1 (delivery status) | On confirmation, a trigger creates `notifications` tasks for 24 h and 2 h; a scheduled function sends due tasks via the mock provider and logs each attempt. Cancel deletes tasks; reschedule recreates them. |
 | FR-10 | Queue reconciliation | UI-B2 Queue management | Staff start/finish actions record `actualStart`/`actualEnd`; projected delay is computed from them and queued walk-ins; delay > 10 min triggers a customer warning. |
-| FR-11 | Booking history and rebooking | UI-C4 My bookings | After OTP, Vue queries `appointments` by `customerId`. Rebook pre-fills shop, barber and service if still active, then uses the normal booking flow. |
+| FR-11 | Booking history and rebooking | UI-C4 My bookings | After OTP, Vue queries `appointments` by `customerId` (one query; Upcoming and History are split client-side, decisions A13). Rebook resets the draft with the same shop, barber and service, and UI-C2 drops any part that is no longer active, saying why; then the normal booking flow applies. No new callables. |
 | FR-12 | No-show tracking | UI-B1 Barber schedule | `markNoShow` allowed from start + 15 min; increments `shopStats.noShowCount`. `reverseNoShow` within 24 h decrements it. Both write audit records. |
 | FR-13 | Escalating no-show policy | UI-C5 Deposit checkout | After OTP, if `noShowCount ≥ 2` the booking goes to PENDING_PAYMENT; `createDeposit` calls the mock payment provider; a signed webhook confirms or expires it. |
-| FR-14 | Shop analytics | UI-O2 Shop dashboard | A trigger updates `dailyStats` on each state change; the dashboard reads one doc per day in the chosen range and computes rates. |
+| FR-14 | Shop analytics | UI-O2 Shop dashboard | `onAppointmentWritten` updates `dailyStats` (idempotent, via `statContrib`); the dashboard reads one doc per day in the chosen range (max 92 days) and computes rates and utilisation. |
 | FR-15 | Waitlist | UI-C6 Waitlist offer | When a slot frees, a trigger offers it to the earliest compatible `waitlist` entry for 15 min; `claimOffer` books it; a scheduled function passes on expired offers and expires entries at end of day. |
 
 Non-functional requirements are met across the system:
@@ -90,8 +90,11 @@ Trigger-owned summary (FR-01, decisions A11): `priceMin, priceMax` (cents), `ser
 `barberId, start, end, reason, createdBy, createdAt`
 Written only by `createBlock`/`removeBlock`. Read by the owner, or by the barber it belongs to (a barber's query must include `barberId == own`). No `auditLog` (decisions A12).
 
-### .../dailyStats/{yyyymmdd}
-Per barber: `completed, valueCents, noShows, bookedMin, openMin`
+### .../dailyStats/{yyyymmdd}  (FR-14, decisions A7)
+`barbers: { [barberId]: { completed, valueCents, noShows, bookedMin } }`, keyed by the Singapore date of the appointment `start`. Owner read only; written only by the `onAppointmentWritten` trigger. `openMin` is not stored: the dashboard computes it from current working hours, shop hours and blocks (limitation L19).
+
+### .../statContrib/{appointmentId}  (FR-14 ledger)
+`dateKey, barberId, completed, valueCents, noShows, bookedMin`: what the appointment currently contributes to `dailyStats`. The trigger applies (new − old) in one transaction, so redelivered events change nothing. No client access.
 
 ### .../queue/{entryId}  (extension, FR-10)
 `walkInName, serviceId, barberId, joinedAt, startedAt, endedAt`

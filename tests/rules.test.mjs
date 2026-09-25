@@ -50,6 +50,27 @@ beforeEach(async () => {
   })
 })
 
+describe('FR-14 dailyStats', () => {
+  beforeEach(() => env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'shops/a/dailyStats/20300107'), { barbers: { b1: { completed: 1 } } })
+    await setDoc(doc(ctx.firestore(), 'shops/a/statContrib/apt1'), { dateKey: '20300107', barberId: 'b1' })
+  }))
+  it('the shop owner reads the range, as one query', async () => {
+    await assertSucceeds(getDoc(doc(owner('a'), 'shops/a/dailyStats/20300107')))
+    await assertSucceeds(getDocs(query(collection(owner('a'), 'shops/a/dailyStats'), where('__name__', '>=', '20300101'), where('__name__', '<=', '20300131'))))
+  })
+  it('barbers, other shops, customers, admin and the public cannot read it', async () => {
+    for (const db of [barber('a'), owner('b'), customer('cust1'), admin(), anon()]) {
+      await assertFails(getDoc(doc(db, 'shops/a/dailyStats/20300107')))
+    }
+  })
+  it('nobody can read the trigger ledger', async () => {
+    for (const db of [owner('a'), barber('a'), customer('cust1'), admin(), anon()]) {
+      await assertFails(getDoc(doc(db, 'shops/a/statContrib/apt1')))
+    }
+  })
+})
+
 describe('public reads', () => {
   it('lets anyone read verified shops, services and schedules', async () => {
     await assertSucceeds(getDoc(doc(anon(), 'shops/a')))
@@ -170,7 +191,7 @@ describe('NFR-04 isolation', () => {
 describe('no client writes to server-owned data', () => {
   const paths = [
     'appointments/new', 'auditLog/new', 'notifications/new', 'deposits/new', 'waitlist/new',
-    'shops/a/schedules/new', 'shops/a/queue/new', 'shops/a/blocks/new', 'shops/a/dailyStats/new',
+    'shops/a/schedules/new', 'shops/a/queue/new', 'shops/a/blocks/new', 'shops/a/dailyStats/new', 'shops/a/statContrib/new',
     'customers/cust1', 'customers/cust1/shopStats/a', 'shops/a/members/x',
   ]
   for (const path of paths) {
@@ -348,5 +369,61 @@ describe('shop configuration writes', () => {
   it('does not allow creating shops from the client', async () => {
     await assertFails(setDoc(doc(owner('a'), 'shops/new'), { status: 'verified' }))
     await assertFails(setDoc(doc(admin(), 'shops/new'), { status: 'verified' }))
+  })
+})
+
+describe('FR-11 booking history', () => {
+  const mine = (uid, ...clauses) => getDocs(query(collection(customer(uid), 'appointments'), where('customerId', '==', uid), ...clauses))
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      const base = { shopId: 'a', barberId: 'b1', serviceId: 's1', start: DAY_START, end: DAY_END }
+      for (const [id, status, customerId] of [
+        ['h1', 'COMPLETED', 'cust9'], ['h2', 'CANCELLED', 'cust9'], ['h3', 'NO_SHOW', 'cust9'], ['h4', 'CONFIRMED', 'cust9'],
+        ['h5', 'EXPIRED', null], ['h6', 'HELD', null], ['h7', 'COMPLETED', 'cust8'],
+      ]) await setDoc(doc(db, `appointments/${id}`), { ...base, status, customerId })
+      // A booking at a shop that has since been suspended, with an inactive service and barber.
+      await setDoc(doc(db, 'shops/s'), { name: 's', status: 'suspended', tz: 'Asia/Singapore' })
+      await setDoc(doc(db, 'shops/s/services/s1'), { ...service, active: false })
+      await setDoc(doc(db, 'shops/s/barbers/b1'), { ...barberDoc, active: false })
+      await setDoc(doc(db, 'shops/a/services/s2'), { ...service, active: false })
+      await setDoc(doc(db, 'shops/a/barbers/b3'), { ...barberDoc, active: false })
+    })
+  })
+
+  it('lists a customer\'s own history across statuses in one customerId query, and only theirs', async () => {
+    const snap = await assertSucceeds(mine('cust9'))
+    assert.deepEqual(snap.docs.map((d) => d.id).sort(), ['h1', 'h2', 'h3', 'h4'])
+    const other = await assertSucceeds(mine('cust8'))
+    assert.deepEqual(other.docs.map((d) => d.id), ['h7'])
+  })
+  it('never returns expired or held appointments to a customer, since they have no customerId', async () => {
+    const snap = await assertSucceeds(mine('cust9'))
+    assert.ok(!snap.docs.some((d) => ['EXPIRED', 'HELD'].includes(d.data().status)))
+    await assertFails(getDoc(doc(customer('cust9'), 'appointments/h5')))
+    await assertFails(getDoc(doc(customer('cust9'), 'appointments/h6')))
+  })
+  it('denies another customer\'s history, an unfiltered listing, and a status-only listing', async () => {
+    await assertFails(getDocs(query(collection(customer('cust1'), 'appointments'), where('customerId', '==', 'cust9'))))
+    await assertFails(getDocs(collection(customer('cust9'), 'appointments')))
+    await assertFails(getDocs(query(collection(customer('cust9'), 'appointments'), where('status', '==', 'COMPLETED'))))
+    await assertFails(getDoc(doc(customer('cust9'), 'appointments/h7')))
+  })
+  it('gives anonymous users and other shops\' staff nothing from the history query', async () => {
+    await assertFails(getDocs(query(collection(anon(), 'appointments'), where('customerId', '==', 'cust9'))))
+    await assertFails(getDocs(query(collection(owner('b'), 'appointments'), where('customerId', '==', 'cust9'))))
+  })
+  it('lets a customer read an inactive service or barber of a verified shop, so Rebook can explain', async () => {
+    await assertSucceeds(getDoc(doc(customer('cust9'), 'shops/a/services/s2')))
+    await assertSucceeds(getDoc(doc(customer('cust9'), 'shops/a/barbers/b3')))
+  })
+  it('hides a suspended shop and its service and barber docs from customers (Rebook is disabled)', async () => {
+    await assertFails(getDoc(doc(customer('cust9'), 'shops/s')))
+    await assertFails(getDoc(doc(customer('cust9'), 'shops/s/services/s1')))
+    await assertFails(getDoc(doc(customer('cust9'), 'shops/s/barbers/b1')))
+  })
+  it('history is read-only: a customer cannot edit or delete a finished appointment', async () => {
+    await assertFails(updateDoc(doc(customer('cust9'), 'appointments/h1'), { status: 'CANCELLED' }))
+    await assertFails(deleteDoc(doc(customer('cust9'), 'appointments/h1')))
   })
 })

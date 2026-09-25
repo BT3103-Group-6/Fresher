@@ -25,6 +25,13 @@ const router = createRouter({
       component: () => import('@/views/staff/ScheduleView.vue'),
       meta: { requiresStaff: true },
     },
+    // Shop dashboard (FR-14): owner only; barbers are redirected to their schedule by the guard below.
+    {
+      path: '/staff/dashboard',
+      name: 'dashboard',
+      component: () => import('@/views/staff/DashboardView.vue'),
+      meta: { requiresOwner: true },
+    },
     { path: '/login', name: 'login', component: () => import('@/views/staff/SignInView.vue') },
     {
       path: '/staff/config',

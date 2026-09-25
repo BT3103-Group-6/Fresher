@@ -14,6 +14,7 @@ async function onSignOut() {
   <header v-if="session.user && session.claims.role" class="bar">
     <nav class="staff-nav" aria-label="Staff">
       <RouterLink :to="{ name: 'schedule' }">Schedule</RouterLink>
+      <RouterLink v-if="isOwner()" :to="{ name: 'dashboard' }">Dashboard</RouterLink>
       <RouterLink v-if="isOwner()" :to="{ name: 'shop-config' }">Shop configuration</RouterLink>
     </nav>
     <span class="who">{{ session.user.email }}</span>
