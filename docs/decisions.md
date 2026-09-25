@@ -101,3 +101,18 @@ Status key: PROPOSED (default in use, needs group approval) · AGREED (confirmed
 | 2026-09-25 | architecture | `addBarber` does not write `auditLog`; `auditLog` is for booking state changes only (NFR-08) | pending |
 | 2026-09-25 | A3 | Booking horizon 14 days | pending |
 | 2026-09-25 | A2/architecture | `releaseHold` callable; hold intervals carry no `refId`; `customerId` null while HELD | pending |
+
+---
+
+## Known limitations and backlog
+Living list. Add an entry when a shortcut is taken or something is deferred; remove or mark **Resolved** when fixed. This section feeds the "Limitations" section of the final report.
+
+| # | Limitation | Why it exists | Must be fixed | Affects |
+|---|---|---|---|---|
+| L1 | `holdSlot` and `releaseHold` are unauthenticated (the hold comes before the OTP) and App Check is not wired, so they can be spammed to block slots. | Architecture order is HELD → OTP → CONFIRMED; App Check was not in scope for FR-02/03. | **Before any public demo or deployment.** Wire App Check on all callables; consider a per-client hold cap. | FR-03, NFR-04 |
+| L2 | Expired holds remain as `HELD` appointment documents (and are pruned from `schedules` only when that barber-day is next written). Slots are correctly free because every transaction ignores expired holds. | The scheduled cleanup function is not built yet. | **UI-B1 (barber schedule) must treat a HELD appointment with `holdExpiresAt` in the past as expired**, never as a live booking. The scheduled cleanup job (release expired holds, mark EXPIRED, write audit) goes in with FR-09 reminders. | FR-08, FR-09, FR-14 |
+| L3 | A confirmed booking always goes HELD → CONFIRMED; the deposit branch (`noShowCount ≥ 2` → PENDING_PAYMENT) is not implemented. | FR-13 is Stretch. | With FR-13. | FR-13 |
+| L4 | No confirmation or reminder SMS is sent; messaging is mocked and not yet built. | FR-09 is Extension. | With FR-09; UI must keep saying it is mocked. | FR-09 |
+| L5 | The booking draft (UI-C2/C3) is held in memory only, so a page reload loses it; the hold then lapses after 10 minutes. | Kept simple for the prototype. | Optional: persist the draft in `sessionStorage`. | NFR-05 |
+| L6 | Concurrency tests cover 50 simultaneous holds and 100 repeated submissions. The 1000-transaction zero-double-booking run (NFR-03) and the 100 simulated failed-write runs (NFR-05) are not yet scripted. Tests run against the emulator only. | Time. | Before the final report's test results. | NFR-03, NFR-05 |
+| L7 | Customers can only start from `/shops/:shopId`; there is no discovery, "my bookings", cancellation or rescheduling. | Build order (A10). | FR-01, FR-04, FR-05, FR-11. | FR-01, FR-04 |

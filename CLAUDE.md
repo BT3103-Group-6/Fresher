@@ -31,6 +31,7 @@ npm run test:rules   # Security Rules tests (node --test) against the already-ru
 
 [docs/requirements.md](docs/requirements.md) (FR-01..15, NFR-01..08, release tiers), [docs/architecture.md](docs/architecture.md) (trust zones, data model, state machine, callable functions, `holdSlot` algorithm), [docs/decisions.md](docs/decisions.md) (decision register A1..).
 
+- Keep the "Known limitations and backlog" section at the end of `docs/decisions.md` current: add an entry whenever a shortcut is taken or work is deferred, and mark it resolved when fixed. It becomes the report's Limitations section. L1 (App Check) blocks any public demo or deployment; L2 (expired HELD docs) must be handled in UI-B1 and the FR-09 cleanup job.
 - Use PROPOSED decisions as defaults. If something is OPEN or missing, ask; don't invent rules. When a decision changes, update `docs/decisions.md` first, then the code.
 - Build order: Core requirements first, then Extensions, then Stretch (see Release status in requirements.md).
 
