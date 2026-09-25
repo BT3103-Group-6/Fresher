@@ -18,6 +18,8 @@ const router = createRouter({
     },
     // Deposit checkout (FR-13). Reached from UI-C3 or UI-C4; reads everything from the live booking, so a reload is safe.
     { path: '/deposit/:requestId', name: 'deposit', component: () => import('@/views/customer/DepositView.vue') },
+    // Waitlist (FR-15): join from UI-C2 (?shop=&service=&barber=&date=) and claim offers. Runs its own OTP step.
+    { path: '/waitlist', name: 'waitlist', component: () => import('@/views/customer/WaitlistView.vue') },
     // Customer bookings (FR-04, FR-05). The view runs its own fresh-OTP step; the server re-checks it.
     { path: '/my-bookings', name: 'my-bookings', component: () => import('@/views/customer/MyBookingsView.vue') },
     // Barber schedule (FR-08): barbers see their own day, owners pick any barber in their shop.

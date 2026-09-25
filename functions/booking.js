@@ -345,13 +345,11 @@ function isHoldOf(apt, interval) {
 }
 
 /**
- * confirmBooking: HELD -> CONFIRMED once the customer has verified an OTP.
- * The mobile number comes from the verified token, never from the client.
- * @param {Object} request The callable request (auth, data).
- * @return {Promise<Object>} Booking summary.
+ * The caller must be signed in with a verified Singapore mobile.
+ * @param {Object} auth The callable's auth context.
+ * @return {Object} {uid, phone}.
  */
-async function confirmBooking(request) {
-  const auth = request.auth;
+function requireVerifiedCustomer(auth) {
   if (!auth) {
     throw new HttpsError("unauthenticated", "Verify your mobile first.");
   }
@@ -360,6 +358,127 @@ async function confirmBooking(request) {
     throw new HttpsError("permission-denied",
         "A Singapore mobile number is required.");
   }
+  return {uid: auth.uid, phone};
+}
+
+/**
+ * The confirmation step shared by confirmBooking and claimOffer (FR-15):
+ * HELD -> CONFIRMED, or -> PENDING_PAYMENT when a deposit is due (FR-13).
+ * Runs inside the caller's transaction; reads come before writes.
+ * @param {Transaction} tx Firestore transaction.
+ * @param {Object} db Firestore instance.
+ * @param {Object} p {requestId, uid, phone, displayName, viaOffer}: viaOffer
+ *   is set only by claimOffer, which may confirm a waitlist hold.
+ * @return {Promise<Object>} {summary} or {expired: true} (the hold had
+ *   lapsed, and has been expired).
+ */
+async function confirmHeldInTx(tx, db, p) {
+  const {requestId, uid, phone, displayName, viaOffer} = p;
+  const aptRef = db.doc(`appointments/${requestId}`);
+  const aptSnap = await tx.get(aptRef);
+  if (!aptSnap.exists) {
+    throw failure("not-found", "HOLD_NOT_FOUND", "Booking not found.");
+  }
+  const apt = aptSnap.data();
+  if ((apt.status === "CONFIRMED" || apt.status === "PENDING_PAYMENT") &&
+      apt.customerId === uid) {
+    return {summary: withDeposit(apt)}; // idempotent retry.
+  }
+  if (apt.status === "EXPIRED") {
+    throw failure("failed-precondition", "HOLD_EXPIRED",
+        "Your hold expired. Please choose the slot again.");
+  }
+  if (apt.status === "HELD" && apt.customerId === null &&
+      apt.waitlistEntryId && !viaOffer) {
+    // FR-15: a waitlist offer can only be confirmed by claimOffer.
+    throw failure("failed-precondition", "OFFER_ONLY",
+        "This slot was offered from a waitlist. Claim it there.");
+  }
+  if (apt.status !== "HELD" || apt.customerId !== null) {
+    throw failure("failed-precondition", "HOLD_ALREADY_USED",
+        "This booking can no longer be confirmed.");
+  }
+  const schedRef = scheduleRefOf(apt);
+  const statsRef = db.doc(`customers/${uid}/shopStats/${apt.shopId}`);
+  const [schedSnap, statsSnap] = await tx.getAll(schedRef, statsRef);
+  const at = Date.now();
+  const others = liveIntervals(
+      schedSnap.data() && schedSnap.data().intervals, at)
+      .filter((iv) => !isHoldOf(apt, iv));
+  const audit = {apt, actorUid: uid, role: "customer", from: "HELD", now: at};
+
+  if (apt.holdExpiresAt.toMillis() <= at) {
+    tx.set(schedRef, {intervals: others, version: FieldValue.increment(1)},
+        {merge: true});
+    tx.update(aptRef, {status: "EXPIRED", holdExpiresAt: null});
+    tx.set(db.doc(`auditLog/${requestId}_EXPIRED`),
+        auditRecord({...audit, action: "release", to: "EXPIRED"}));
+    return {expired: true};
+  }
+
+  const buyer = {
+    customerId: uid,
+    customerName: displayName,
+    customerPhoneMasked: `+65 ${phone[3]}••• ••${phone.slice(-2)}`,
+  };
+  const noShows = (statsSnap.data() && statsSnap.data().noShowCount) || 0;
+  const depositCents = noShows >= DEPOSIT_AFTER_NO_SHOWS ?
+    depositAmountCents(apt.priceCents) : 0;
+  if (depositCents > 0) {
+    // FR-13 (decisions A6): a deposit is due. The slot stays held for the
+    // payment deadline (holdExpiresAt); reminders wait for CONFIRMED.
+    const deadline = Timestamp.fromMillis(at + PAYMENT_MS);
+    const pendingApt = {
+      ...apt, ...buyer, status: "PENDING_PAYMENT", holdExpiresAt: deadline,
+      depositId: requestId,
+    };
+    tx.set(schedRef, {
+      intervals: [...others, {
+        start: apt.start, end: apt.end, kind: "hold",
+        holdExpiresAt: deadline}],
+      version: FieldValue.increment(1),
+    }, {merge: true});
+    tx.set(aptRef, pendingApt);
+    tx.set(db.doc(`customers/${uid}`),
+        {phoneE164: phone, displayName}, {merge: true});
+    tx.set(db.doc(`deposits/${requestId}`), {
+      bookingId: requestId, shopId: apt.shopId, barberId: apt.barberId,
+      customerId: uid, amountCents: depositCents, status: "pending",
+      providerRef: null, createdAt: Timestamp.fromMillis(at),
+    });
+    tx.set(db.doc(`auditLog/${requestId}_PENDING_PAYMENT`), auditRecord(
+        {...audit, action: "requireDeposit", to: "PENDING_PAYMENT"}));
+    return {summary: withDeposit(pendingApt)};
+  }
+
+  const confirmed = {
+    ...apt,
+    ...buyer,
+    status: "CONFIRMED",
+    holdExpiresAt: null,
+  };
+  tx.set(schedRef, {
+    intervals: [...others, {
+      start: apt.start, end: apt.end, kind: "booking", refId: requestId}],
+    version: FieldValue.increment(1),
+  }, {merge: true});
+  tx.set(aptRef, confirmed);
+  tx.set(db.doc(`customers/${uid}`),
+      {phoneE164: phone, displayName}, {merge: true});
+  notifications.writeTasks(tx, db, confirmed, null, at); // FR-09.
+  tx.set(db.doc(`auditLog/${requestId}_CONFIRMED`),
+      auditRecord({...audit, action: "confirm", to: "CONFIRMED"}));
+  return {summary: summary(confirmed)};
+}
+
+/**
+ * confirmBooking: HELD -> CONFIRMED once the customer has verified an OTP.
+ * The mobile number comes from the verified token, never from the client.
+ * @param {Object} request The callable request (auth, data).
+ * @return {Promise<Object>} Booking summary.
+ */
+async function confirmBooking(request) {
+  const {uid, phone} = requireVerifiedCustomer(request.auth);
   const data = request.data || {};
   const requestId = checkRequestId(data.requestId);
   const displayName =
@@ -367,100 +486,9 @@ async function confirmBooking(request) {
   if (displayName.length < 1 || displayName.length > 80) {
     invalid("displayName", "Name must be 1 to 80 characters.");
   }
-  const uid = auth.uid;
   const db = getFirestore();
-  const aptRef = db.doc(`appointments/${requestId}`);
-
-  const result = await transact(async (tx) => {
-    const aptSnap = await tx.get(aptRef);
-    if (!aptSnap.exists) {
-      throw failure("not-found", "HOLD_NOT_FOUND", "Booking not found.");
-    }
-    const apt = aptSnap.data();
-    if ((apt.status === "CONFIRMED" || apt.status === "PENDING_PAYMENT") &&
-        apt.customerId === uid) {
-      return {summary: withDeposit(apt)}; // idempotent retry.
-    }
-    if (apt.status === "EXPIRED") {
-      throw failure("failed-precondition", "HOLD_EXPIRED",
-          "Your hold expired. Please choose the slot again.");
-    }
-    if (apt.status !== "HELD" || apt.customerId !== null) {
-      throw failure("failed-precondition", "HOLD_ALREADY_USED",
-          "This booking can no longer be confirmed.");
-    }
-    const schedRef = scheduleRefOf(apt);
-    const statsRef = db.doc(`customers/${uid}/shopStats/${apt.shopId}`);
-    const [schedSnap, statsSnap] = await tx.getAll(schedRef, statsRef);
-    const at = Date.now();
-    const others = liveIntervals(
-        schedSnap.data() && schedSnap.data().intervals, at)
-        .filter((iv) => !isHoldOf(apt, iv));
-    const audit = {apt, actorUid: uid, role: "customer", from: "HELD", now: at};
-
-    if (apt.holdExpiresAt.toMillis() <= at) {
-      tx.set(schedRef, {intervals: others, version: FieldValue.increment(1)},
-          {merge: true});
-      tx.update(aptRef, {status: "EXPIRED", holdExpiresAt: null});
-      tx.set(db.doc(`auditLog/${requestId}_EXPIRED`),
-          auditRecord({...audit, action: "release", to: "EXPIRED"}));
-      return {expired: true};
-    }
-
-    const buyer = {
-      customerId: uid,
-      customerName: displayName,
-      customerPhoneMasked: `+65 ${phone[3]}••• ••${phone.slice(-2)}`,
-    };
-    const noShows = (statsSnap.data() && statsSnap.data().noShowCount) || 0;
-    const depositCents = noShows >= DEPOSIT_AFTER_NO_SHOWS ?
-      depositAmountCents(apt.priceCents) : 0;
-    if (depositCents > 0) {
-      // FR-13 (decisions A6): a deposit is due. The slot stays held for the
-      // payment deadline (holdExpiresAt); reminders wait for CONFIRMED.
-      const deadline = Timestamp.fromMillis(at + PAYMENT_MS);
-      const pendingApt = {
-        ...apt, ...buyer, status: "PENDING_PAYMENT", holdExpiresAt: deadline,
-        depositId: requestId,
-      };
-      tx.set(schedRef, {
-        intervals: [...others, {
-          start: apt.start, end: apt.end, kind: "hold",
-          holdExpiresAt: deadline}],
-        version: FieldValue.increment(1),
-      }, {merge: true});
-      tx.set(aptRef, pendingApt);
-      tx.set(db.doc(`customers/${uid}`),
-          {phoneE164: phone, displayName}, {merge: true});
-      tx.set(db.doc(`deposits/${requestId}`), {
-        bookingId: requestId, shopId: apt.shopId, barberId: apt.barberId,
-        customerId: uid, amountCents: depositCents, status: "pending",
-        providerRef: null, createdAt: Timestamp.fromMillis(at),
-      });
-      tx.set(db.doc(`auditLog/${requestId}_PENDING_PAYMENT`), auditRecord(
-          {...audit, action: "requireDeposit", to: "PENDING_PAYMENT"}));
-      return {summary: withDeposit(pendingApt)};
-    }
-
-    const confirmed = {
-      ...apt,
-      ...buyer,
-      status: "CONFIRMED",
-      holdExpiresAt: null,
-    };
-    tx.set(schedRef, {
-      intervals: [...others, {
-        start: apt.start, end: apt.end, kind: "booking", refId: requestId}],
-      version: FieldValue.increment(1),
-    }, {merge: true});
-    tx.set(aptRef, confirmed);
-    tx.set(db.doc(`customers/${uid}`),
-        {phoneE164: phone, displayName}, {merge: true});
-    notifications.writeTasks(tx, db, confirmed, null, at); // FR-09.
-    tx.set(db.doc(`auditLog/${requestId}_CONFIRMED`),
-        auditRecord({...audit, action: "confirm", to: "CONFIRMED"}));
-    return {summary: summary(confirmed)};
-  });
+  const result = await transact((tx) => confirmHeldInTx(
+      tx, db, {requestId, uid, phone, displayName, viaOffer: false}));
   if (result.expired) {
     throw failure("failed-precondition", "HOLD_EXPIRED",
         "Your hold expired. Please choose the slot again.");
@@ -477,9 +505,10 @@ async function confirmBooking(request) {
  * @param {Transaction} tx Firestore transaction.
  * @param {DocumentReference} aptRef The appointment.
  * @param {Object} rel {actorUid, role, action, now?, onlyExpired?,
- *   allowPending?, deposit?}: onlyExpired also requires holdExpiresAt <= now
- *   (the sweep); `deposit` are the fields written to a still-pending deposit
- *   (default {status: "failed"}).
+ *   allowPending?, allowWaitlist?, deposit?}: onlyExpired also requires
+ *   holdExpiresAt <= now (the sweep); allowWaitlist lets the sweep end a
+ *   waitlist offer's hold; `deposit` are the fields written to a
+ *   still-pending deposit (default {status: "failed"}).
  * @return {Promise<boolean>} True if the appointment was released.
  */
 async function releaseInTx(tx, aptRef, rel) {
@@ -489,6 +518,8 @@ async function releaseInTx(tx, aptRef, rel) {
   const held = apt.status === "HELD" && apt.customerId === null;
   const unpaid = rel.allowPending && apt.status === "PENDING_PAYMENT";
   if (!held && !unpaid) return false;
+  // FR-15: only the sweep may end a waitlist offer's hold.
+  if (held && apt.waitlistEntryId && !rel.allowWaitlist) return false;
   const at = rel.now === undefined ? Date.now() : rel.now;
   if (rel.onlyExpired &&
       !(apt.holdExpiresAt && apt.holdExpiresAt.toMillis() <= at)) {
@@ -797,7 +828,9 @@ async function reschedule(request) {
 
 module.exports = {
   holdSlot, confirmBooking, releaseHold, cancelBooking, reschedule,
-  releaseInTx, isHoldOf, scheduleRefOf, depositAmountCents, withDeposit,
+  releaseInTx, confirmHeldInTx, requireVerifiedCustomer, isHoldOf,
+  scheduleRefOf, depositAmountCents, withDeposit, withinHours, sgTimeToMs,
+  SG_OFFSET_MS, SG_PHONE,
   isLate, requireFreshCustomer,
   // Shared with service.js (FR-12).
   isStaffFor, summary, auditRecord, checkRequestId, MINUTE_MS,

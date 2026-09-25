@@ -296,7 +296,10 @@ async function onAction(a, action) {
               <span class="badge">{{ STATUS_LABELS[displayStatus(item.apt, now)] }}</span>
             </p>
             <p class="meta">
-              <template v-if="displayStatus(item.apt, now) === 'HELD'">
+              <template v-if="displayStatus(item.apt, now) === 'HELD' && item.apt.waitlistEntryId">
+                Offered to a waitlist customer. Not a booking yet; held until {{ formatTime(item.apt.holdExpiresAt) }}.
+              </template>
+              <template v-else-if="displayStatus(item.apt, now) === 'HELD'">
                 A customer is verifying their number. Not a booking yet; held until {{ formatTime(item.apt.holdExpiresAt) }}.
               </template>
               <template v-else-if="displayStatus(item.apt, now) === 'PENDING_PAYMENT'">

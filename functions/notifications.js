@@ -196,6 +196,26 @@ function cancelTasks(tx, existing) {
 }
 
 /**
+ * The waitlist offer task (FR-15), written by the offer transaction. Its
+ * bookingId is the offer's appointment; the sender checks the entry is still
+ * offered before sending. It is not one of TYPES, so booking reminders and
+ * cancellation never touch it.
+ * @param {Object} apt The offer's HELD appointment data.
+ * @param {string} entryId The waitlist entry ID.
+ * @param {number} now Current time (ms).
+ * @return {Object} The task document.
+ */
+function offerTask(apt, entryId, now) {
+  return {
+    bookingId: apt.requestId, shopId: apt.shopId, barberId: apt.barberId,
+    apptStart: apt.start, channel: CHANNEL, type: "waitlistOffer", entryId,
+    dueAt: Timestamp.fromMillis(now), status: "pending",
+    nextAttemptAt: Timestamp.fromMillis(now), rev: 1, attempts: [],
+    createdAt: Timestamp.fromMillis(now),
+  };
+}
+
+/**
  * @param {string} type Task type.
  * @param {number} start Appointment start (ms).
  * @return {string} The SMS text (the provider is a mock, see messaging.js).
@@ -208,6 +228,10 @@ function messageBody(type, start) {
   if (type === "confirmation") {
     return `Fresher: your booking is confirmed for ${when}.`;
   }
+  if (type === "waitlistOffer") {
+    return `Fresher: a slot opened on your waitlist, ${when}. ` +
+      "Open the app and claim it within 15 minutes.";
+  }
   if (type === "reminder24h") {
     return `Fresher reminder: your appointment is in 24 hours, ${when}.`;
   }
@@ -216,6 +240,6 @@ function messageBody(type, start) {
 
 module.exports = {
   planReminders, taskRefs, readTasks, writeTasks, cancelTasks, messageBody,
-  backfillReminders, backfillTasks,
+  backfillReminders, backfillTasks, offerTask,
   TYPES, CHANNEL, MINUTE_MS,
 };

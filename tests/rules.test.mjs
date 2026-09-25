@@ -46,6 +46,9 @@ beforeEach(async () => {
     await setDoc(doc(db, 'shops/b/blocks/k3'), { barberId: 'b1', start: DAY_START, end: DAY_END })
     await setDoc(doc(db, 'auditLog/e1'), { shopId: 'a', bookingId: 'apt1' })
     await setDoc(doc(db, 'notifications/n1'), { shopId: 'a', barberId: 'b1', bookingId: 'apt1' })
+    await setDoc(doc(db, 'waitlist/w1'), { shopId: 'a', barberId: 'b1', customerId: 'cust1', serviceId: 's1', date: '20300107', status: 'waiting' })
+    await setDoc(doc(db, 'waitlist/w2'), { shopId: 'a', barberId: null, customerId: 'cust2', serviceId: 's1', date: '20300107', status: 'offered', offerRequestId: 'r1' })
+    await setDoc(doc(db, 'waitlist/w3'), { shopId: 'a', barberId: 'b2', customerId: 'cust2', serviceId: 's1', date: '20300107', status: 'waiting' })
     await setDoc(doc(db, 'deposits/d1'), { shopId: 'a', barberId: 'b1', customerId: 'cust1', bookingId: 'apt1', amountCents: 1250, status: 'pending' })
     await setDoc(doc(db, 'deposits/d2'), { shopId: 'a', barberId: 'b2', customerId: 'cust2', bookingId: 'apt2', amountCents: 1250, status: 'paid' })
     await setDoc(doc(db, 'notifications/n2'), { shopId: 'a', barberId: 'b2', bookingId: 'apt2' })
@@ -173,6 +176,34 @@ describe('NFR-04 isolation', () => {
     await assertSucceeds(getDoc(doc(barber('a'), 'notifications/n1')))
     await assertFails(getDoc(doc(customer('cust1'), 'notifications/n1')))
   })
+  it('lets a customer read only their own waitlist entries (FR-15)', async () => {
+    await assertSucceeds(getDoc(doc(customer('cust1'), 'waitlist/w1')))
+    await assertFails(getDoc(doc(customer('cust1'), 'waitlist/w2')))
+    await assertSucceeds(getDoc(doc(customer('cust2'), 'waitlist/w2')))
+    await assertSucceeds(getDoc(doc(customer('cust2'), 'waitlist/w3')))
+    await assertFails(getDoc(doc(customer('cust3'), 'waitlist/w1')))
+    await assertFails(getDoc(doc(anon(), 'waitlist/w1')))
+  })
+  it('supports listing own entries by customerId, and nobody else\'s (FR-15)', async () => {
+    await assertSucceeds(getDocs(query(collection(customer('cust2'), 'waitlist'), where('customerId', '==', 'cust2'))))
+    await assertFails(getDocs(query(collection(customer('cust1'), 'waitlist'), where('customerId', '==', 'cust2'))))
+    await assertFails(getDocs(collection(customer('cust1'), 'waitlist')))
+  })
+  it('lets the shop owner read every entry of their shop, and no other shop\'s (FR-15)', async () => {
+    for (const id of ['w1', 'w2', 'w3']) await assertSucceeds(getDoc(doc(owner('a'), `waitlist/${id}`)))
+    await assertFails(getDoc(doc(owner('b'), 'waitlist/w1')))
+    await assertSucceeds(getDocs(query(collection(owner('a'), 'waitlist'), where('shopId', '==', 'a'))))
+  })
+  it('lets a barber read only entries that name them (FR-15)', async () => {
+    await assertSucceeds(getDoc(doc(barber('a', 'b1'), 'waitlist/w1')))
+    await assertFails(getDoc(doc(barber('a', 'b1'), 'waitlist/w2'))) // any barber: not this barber's entry
+    await assertFails(getDoc(doc(barber('a', 'b1'), 'waitlist/w3'))) // names b2
+    await assertSucceeds(getDoc(doc(barber('a', 'b2'), 'waitlist/w3')))
+    await assertFails(getDoc(doc(barber('b', 'b1'), 'waitlist/w1')))
+    await assertSucceeds(getDocs(query(collection(barber('a', 'b1'), 'waitlist'), where('shopId', '==', 'a'), where('barberId', '==', 'b1'))))
+    await assertFails(getDocs(query(collection(barber('a', 'b1'), 'waitlist'), where('shopId', '==', 'a'))))
+    await assertFails(getDoc(doc(admin(), 'waitlist/w1')))
+  })
   it('lets a customer read only their own deposit (FR-13)', async () => {
     await assertSucceeds(getDoc(doc(customer('cust1'), 'deposits/d1')))
     await assertFails(getDoc(doc(customer('cust1'), 'deposits/d2')))
@@ -233,6 +264,15 @@ describe('no client writes to server-owned data', () => {
       }
     })
   }
+  it('denies creating, updating and deleting waitlist entries, including a customer claiming or joining directly (FR-15)', async () => {
+    const entry = { shopId: 'a', barberId: null, customerId: 'cust1', serviceId: 's1', date: '20300107', status: 'waiting' }
+    for (const db of [anon(), customer('cust1'), customer('cust2'), owner('a'), barber('a', 'b1'), admin()]) {
+      await assertFails(setDoc(doc(db, 'waitlist/fresh'), entry))
+      await assertFails(updateDoc(doc(db, 'waitlist/w1'), { status: 'claimed' }))
+      await assertFails(updateDoc(doc(db, 'waitlist/w2'), { status: 'claimed', claimedBookingId: 'r1' }))
+      await assertFails(deleteDoc(doc(db, 'waitlist/w1')))
+    }
+  })
   it('denies updating and deleting deposits, including the customer marking their own as paid (FR-13)', async () => {
     for (const db of [customer('cust1'), owner('a'), barber('a', 'b1'), admin()]) {
       await assertFails(updateDoc(doc(db, 'deposits/d1'), { status: 'paid' }))

@@ -92,6 +92,7 @@ export function toAppointment(id, data) {
     start: data.start.toMillis(),
     end: data.end.toMillis(),
     holdExpiresAt: data.holdExpiresAt ? data.holdExpiresAt.toMillis() : null,
+    waitlistEntryId: data.waitlistEntryId ?? null, // FR-15: a HELD appointment offered to a waitlist customer
     customerName: data.customerName ?? null,
     customerPhoneMasked: data.customerPhoneMasked ?? null,
     priceCents: data.priceCents,

@@ -33,9 +33,19 @@ function claim(db, ref, now) {
     }
     const aptSnap = await tx.get(db.doc(`appointments/${task.bookingId}`));
     const apt = aptSnap.exists ? aptSnap.data() : null;
-    const stale = !apt || apt.status !== "CONFIRMED" ||
-      apt.start.toMillis() !== task.apptStart.toMillis() ||
-      apt.start.toMillis() <= now;
+    // FR-15: an offer is for a HELD appointment whose entry is still offered
+    // (the customer is the entry's, not the appointment's).
+    const offer = task.type === "waitlistOffer";
+    const entrySnap = offer ?
+      await tx.get(db.doc(`waitlist/${task.entryId}`)) : null;
+    const entry = entrySnap && entrySnap.exists ? entrySnap.data() : null;
+    const stale = offer ?
+      !apt || apt.status !== "HELD" || !entry || entry.status !== "offered" ||
+        entry.offerRequestId !== task.bookingId ||
+        entry.offerExpiresAt.toMillis() <= now :
+      !apt || apt.status !== "CONFIRMED" ||
+        apt.start.toMillis() !== task.apptStart.toMillis() ||
+        apt.start.toMillis() <= now;
     if (stale) {
       tx.update(ref, {
         status: "cancelled", nextAttemptAt: FieldValue.delete(),
@@ -43,7 +53,8 @@ function claim(db, ref, now) {
       });
       return null;
     }
-    const custSnap = await tx.get(db.doc(`customers/${apt.customerId}`));
+    const custSnap = await tx.get(
+        db.doc(`customers/${offer ? entry.customerId : apt.customerId}`));
     tx.update(ref, {nextAttemptAt: ts(now + LEASE_MS)});
     return {
       type: task.type,
@@ -146,26 +157,71 @@ async function sweepExpiredHolds(db, now) {
   for (const doc of snap.docs) {
     const done = await transact((tx) => releaseInTx(tx, doc.ref, {
       actorUid: null, role: "system", action: "expire", now,
-      onlyExpired: true, allowPending: true}));
+      onlyExpired: true, allowPending: true,
+      allowWaitlist: true}));
     if (done) expired++;
   }
   return {found: snap.size, expired};
 }
 
 /**
+ * FR-15: marks lapsed waitlist offers and entries past the end of their date
+ * (Singapore) expired. A lapsed offer's hold is released by
+ * sweepExpiredHolds, which frees the slot for the trigger to offer on.
+ * @param {Object} db Firestore instance.
+ * @param {number} now Current time (ms).
+ * @return {Promise<Object>} {lapsed, ended}.
+ */
+async function sweepWaitlist(db, now) {
+  const expire = async (doc, statuses, field, reason) => {
+    return transact(async (tx) => {
+      const e = (await tx.get(doc.ref)).data();
+      if (!e || !statuses.includes(e.status) ||
+          !e[field] || e[field].toMillis() > now) {
+        return false;
+      }
+      tx.update(doc.ref, {status: "expired", expireReason: reason});
+      return true;
+    });
+  };
+  const lapsedSnap = await db.collection("waitlist")
+      .where("status", "==", "offered")
+      .where("offerExpiresAt", "<=", ts(now)).limit(BATCH).get();
+  let lapsed = 0;
+  for (const doc of lapsedSnap.docs) {
+    if (await expire(doc, ["offered"], "offerExpiresAt", "offer_lapsed")) {
+      lapsed++;
+    }
+  }
+  const endedSnap = await db.collection("waitlist")
+      .where("status", "in", ["waiting", "offered"])
+      .where("expiresAt", "<=", ts(now)).limit(BATCH).get();
+  let ended = 0;
+  for (const doc of endedSnap.docs) {
+    if (await expire(doc, ["waiting", "offered"], "expiresAt",
+        "date_passed")) {
+      ended++;
+    }
+  }
+  return {lapsed, ended};
+}
+
+/**
  * @param {Object} db Firestore instance.
  * @param {Object} provider Messaging provider.
  * @param {number} now Current time (ms); defaults to the real clock.
- * @return {Promise<Object>} {notifications, holds}.
+ * @return {Promise<Object>} {notifications, holds, waitlist}.
  */
 async function runAll(db, provider, now) {
   const at = now === undefined ? Date.now() : now;
   return {
     notifications: await sendDueTasks(db, provider, at),
     holds: await sweepExpiredHolds(db, at),
+    waitlist: await sweepWaitlist(db, at),
   };
 }
 
 module.exports = {
-  sendDueTasks, sweepExpiredHolds, runAll, MAX_ATTEMPTS, LEASE_MS, RETRY_MS,
+  sendDueTasks, sweepExpiredHolds, sweepWaitlist, runAll, MAX_ATTEMPTS,
+  LEASE_MS, RETRY_MS,
 };

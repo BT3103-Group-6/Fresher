@@ -229,6 +229,23 @@ describe('reminderSummary (FR-09: reminder status per booking on UI-B1)', () => 
   })
 })
 
+describe('a waitlist offer on UI-B1 (FR-15)', () => {
+  const stamp = (ms) => ({ toMillis: () => ms })
+  const doc = (over = {}) => ({ barberId: 'b1', serviceId: 's', status: 'HELD', start: stamp(NOW), end: stamp(NOW + 30 * 60e3), holdExpiresAt: stamp(NOW + 15 * 60e3), priceCents: 2500, durationMin: 30, ...over })
+
+  it('toAppointment carries waitlistEntryId so the row can say the hold is for a waitlist customer', () => {
+    assert.equal(toAppointment('a', doc({ waitlistEntryId: 'e1' })).waitlistEntryId, 'e1')
+    assert.equal(toAppointment('a', doc()).waitlistEntryId, null)
+  })
+  it('is an ordinary live hold: on the timeline until it lapses, never counted as a booking', () => {
+    const a = toAppointment('a', doc({ waitlistEntryId: 'e1' }))
+    assert.equal(displayStatus(a, NOW), 'HELD')
+    assert.equal(isActive(a, NOW), true)
+    assert.equal(isBooking(a, NOW), false)
+    assert.equal(displayStatus(a, NOW + 15 * 60e3), 'EXPIRED')
+  })
+})
+
 describe('PENDING_PAYMENT on UI-B1 (FR-13): held for a deposit, never a booking', () => {
   const unpaid = (deadline, extra = {}) => apt('a', 'PENDING_PAYMENT', '15:00', '15:30', { holdExpiresAt: deadline, ...extra })
 

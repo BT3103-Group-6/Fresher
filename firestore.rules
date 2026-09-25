@@ -120,9 +120,12 @@ service cloud.firestore {
         || isOwnerOf(resource.data.shopId)
         || isBarberOf(resource.data.shopId, resource.data.barberId);
     }
+    // FR-15: the customer it belongs to, the shop's owner, and a barber only for entries naming that barber.
+    // Written only by functions.
     match /waitlist/{entryId} {
       allow read: if (signedIn() && resource.data.customerId == request.auth.uid)
-        || isStaffOf(resource.data.shopId);
+        || isOwnerOf(resource.data.shopId)
+        || isBarberOf(resource.data.shopId, resource.data.barberId);
     }
   }
 }

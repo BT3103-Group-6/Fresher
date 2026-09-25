@@ -230,8 +230,13 @@ async function onContinue() {
           <p id="slot-hint" class="hint" aria-live="polite">
             <template v-if="!draft.serviceId">Choose a service to see available times.</template>
             <template v-else-if="!ready">Loading times…</template>
-            <template v-else-if="!slots.length">No times available on this date. Try another day.</template>
+            <template v-else-if="!slots.length">No times available on this date. Try another day, or join the waitlist below.</template>
             <template v-else>Times update live. All times are Singapore time.</template>
+          </p>
+          <p v-if="draft.serviceId && ready && !slots.length">
+            <router-link class="btn secondary" :to="{ name: 'waitlist', query: { shop: shopId, service: draft.serviceId, barber: draft.barberId, date: draft.dateKey } }">
+              Join the waitlist for this date
+            </router-link>
           </p>
           <div v-if="slots.length" class="slots" role="radiogroup" aria-label="Available times">
             <label v-for="s in slots" :key="s" class="slot">
