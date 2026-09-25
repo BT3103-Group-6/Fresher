@@ -1,0 +1,51 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+Fresher is a multi-shop barber booking app (Vue 3 + Vite frontend; Firebase Auth, Firestore, Cloud Functions, Security Rules, App Check, Hosting). It is a student prototype (BT3103). The foundation exists (`src/firebase.js` emulator wiring, real `firestore.rules`, `scripts/seed.mjs`, `tests/rules.test.mjs`), but there are no screens yet (`src/` components are still the Vue template) and `functions/index.js` is the Firebase stub. Most of the architecture below is design to build toward.
+
+## Commands
+
+```sh
+npm install
+npm run dev          # Vite dev server
+npm run build        # outputs dist/ (served by Firebase Hosting)
+
+npm --prefix functions install
+npm --prefix functions run lint   # ESLint (google config); also the firebase predeploy step
+
+npx -y firebase-tools@latest emulators:start   # Auth 9099, Functions 5001, Firestore 8080, Hosting 5002, UI
+npm run seed         # fictional shops/barbers/services + staff logins into the RUNNING emulators (refuses without emulator env vars)
+npm run test:rules   # Security Rules tests (node --test) against the already-running emulator; uses project id fresher-rules-test, so seeded data is untouched
+```
+
+- Never start emulators from a session: they are expected to be running already in the user's terminal. They need JDK 21+. Copy `.env.example` to `.env.local` for the `VITE_FIREBASE_*` values (placeholders are fine in dev).
+- `functions/` lint currently fails on the untouched starter stub in `functions/index.js`.
+- The only automated tests are the rules tests. Run the narrowest relevant build, lint or rules test after changes. Concurrency tests (NFR-03/05) are meant to run against the Firestore emulator with scripted concurrent calls.
+- Node: root `^22.18.0 || >=24.12.0`; `functions/` uses Node 24.
+- Use the emulators for development. Do not deploy or touch production services.
+- Module style: root package is ESM; `functions/` is CommonJS. Follow the local style in each.
+- Use the `@` alias for `src` imports.
+
+## Read the docs before implementing a feature
+
+[docs/requirements.md](docs/requirements.md) (FR-01..15, NFR-01..08, release tiers), [docs/architecture.md](docs/architecture.md) (trust zones, data model, state machine, callable functions, `holdSlot` algorithm), [docs/decisions.md](docs/decisions.md) (decision register A1..).
+
+- Use PROPOSED decisions as defaults. If something is OPEN or missing, ask; don't invent rules. When a decision changes, update `docs/decisions.md` first, then the code.
+- Build order: Core requirements first, then Extensions, then Stretch (see Release status in requirements.md).
+
+## Architecture (big picture)
+
+- **Browser is untrusted.** No secrets (OneMap token, messaging/payment keys) in the bundle; those live in Cloud Functions secrets (`defineSecret`). External services (OneMap geocoding, messaging, payment) are called only from functions.
+- **Clients never write** to `appointments`, `schedules`, `deposits`, `notifications`, `auditLog`, `waitlist`, `queue`. Security Rules deny it; all booking state changes go through callable functions (`holdSlot`, `confirmBooking`, `cancelBooking`, `reschedule`, `markNoShow`, ... full list in architecture.md). Each function: check auth/role → load state in a Firestore transaction → verify the transition against the appointment state table → write the new state **and** an `auditLog` record in the same transaction.
+- **Concurrency model:** one `schedules/{barberId_yyyymmdd}` doc per barber-day holds `intervals[]` (booking/hold/block) and acts as the lock document. Transactions ignore expired holds, so correctness never depends on the scheduler. `holdSlot` is idempotent via a client-generated `requestId` that is also the `appointments` doc ID; duration/end are computed server-side.
+- **Data conventions:** half-open intervals `[start, end)`; money as integer SGD cents; Timestamps in UTC; appointments snapshot `priceCents`/`durationMin`; deterministic notification IDs `{bookingId}_{type}`.
+- **Region/time zone:** `asia-southeast1` for Firestore and all functions; `Asia/Singapore` for shop-local dates and times.
+- **Identity:** customers use Phone Auth (SMS OTP, SG mobiles only; fresh OTP needed for history or booking changes); staff use email/password with custom claims `{ shopId, role: owner|barber }` (barbers also `barberId`) set by `addBarber`; platform admin claim `admin: true` may only change shop `status`. No anonymous auth. Staff access is scoped to their own shop. Staff cannot read `customers`; `confirmBooking` copies `customerName` and a masked phone onto the appointment.
+- Messaging and payment are **mocked** behind small interfaces in the prototype, and the UI/report must say so.
+- `src/firebase.js` connects Auth, Firestore and Functions to the emulators when `import.meta.env.DEV` is true; App Check is not wired yet.
+- Security Rules are part of each feature: extend `firestore.rules` and `tests/rules.test.mjs` together. Rules default-deny and allow no client writes to server-owned collections; `notifications` and `deposits` carry `shopId` so staff reads can be scoped.
+
+## UI conventions
+
+Mobile-first, accessible labelled controls, visible focus, field-level validation, and entered form data preserved after recoverable failures (SLOT_TAKEN, OTP failure, network loss). Design direction: white background, charcoal text, dark teal action colour, labelled status indicators. Keep changes to the starter components minimal; keep feature code near its owning screen (UI-C1..C6 customer, UI-B1/B2 barber, UI-O1/O2 owner).
