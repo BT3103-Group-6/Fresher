@@ -11,7 +11,9 @@ const REMINDERS = [
   {type: "reminder24h", beforeMs: 24 * HOUR_MS},
   {type: "reminder2h", beforeMs: 2 * HOUR_MS},
 ];
-const TYPES = ["confirmation", ...REMINDERS.map((r) => r.type)];
+// "delay" (FR-10) is written by queue.js, not by writeTasks; it is listed so
+// that cancelBooking cancels a pending delay warning too.
+const TYPES = ["confirmation", ...REMINDERS.map((r) => r.type), "delay"];
 const CHANNEL = "sms";
 
 /**
@@ -218,15 +220,21 @@ function offerTask(apt, entryId, now) {
 /**
  * @param {string} type Task type.
  * @param {number} start Appointment start (ms).
+ * @param {number} delayMin Projected delay in minutes (delay type only).
  * @return {string} The SMS text (the provider is a mock, see messaging.js).
  */
-function messageBody(type, start) {
+function messageBody(type, start, delayMin) {
   const when = new Intl.DateTimeFormat("en-SG", {
     timeZone: "Asia/Singapore", weekday: "short", day: "numeric",
     month: "short", hour: "numeric", minute: "2-digit", hour12: true,
   }).format(new Date(start));
   if (type === "confirmation") {
     return `Fresher: your booking is confirmed for ${when}.`;
+  }
+  if (type === "delay") {
+    return `Fresher: your barber is running about ${delayMin} minutes ` +
+      `behind, so your appointment on ${when} may start late. Your booking ` +
+      "time has not changed; you can cancel or reschedule in the app.";
   }
   if (type === "waitlistOffer") {
     return `Fresher: a slot opened on your waitlist, ${when}. ` +

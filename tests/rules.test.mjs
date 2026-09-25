@@ -53,6 +53,10 @@ beforeEach(async () => {
     await setDoc(doc(db, 'deposits/d2'), { shopId: 'a', barberId: 'b2', customerId: 'cust2', bookingId: 'apt2', amountCents: 1250, status: 'paid' })
     await setDoc(doc(db, 'notifications/n2'), { shopId: 'a', barberId: 'b2', bookingId: 'apt2' })
     await setDoc(doc(db, 'customers/cust1'), { phoneE164: '+6591234567' })
+    await setDoc(doc(db, 'shops/a/queue/q1'), { shopId: 'a', barberId: 'b1', walkInName: 'Wei', serviceId: 's1', durationMin: 30, status: 'waiting' })
+    await setDoc(doc(db, 'shops/a/queue/q2'), { shopId: 'a', barberId: 'b2', walkInName: 'Ravi', serviceId: 's1', durationMin: 30, status: 'waiting' })
+    await setDoc(doc(db, 'shops/b/queue/q3'), { shopId: 'b', barberId: 'b1', walkInName: 'Other', serviceId: 's1', durationMin: 30, status: 'waiting' })
+    await setDoc(doc(db, 'notifications/n3'), { shopId: 'a', barberId: 'b1', bookingId: 'apt1', type: 'delay', delayMin: 25, status: 'pending' })
   })
 })
 
@@ -503,5 +507,54 @@ describe('FR-11 booking history', () => {
   it('history is read-only: a customer cannot edit or delete a finished appointment', async () => {
     await assertFails(updateDoc(doc(customer('cust9'), 'appointments/h1'), { status: 'CANCELLED' }))
     await assertFails(deleteDoc(doc(customer('cust9'), 'appointments/h1')))
+  })
+})
+
+describe('FR-10 queue', () => {
+  it('lets the owner read every walk-in in their own shop, and no other shop\'s', async () => {
+    await assertSucceeds(getDoc(doc(owner('a'), 'shops/a/queue/q1')))
+    await assertSucceeds(getDoc(doc(owner('a'), 'shops/a/queue/q2')))
+    await assertFails(getDoc(doc(owner('a'), 'shops/b/queue/q3')))
+    await assertFails(getDoc(doc(owner('b'), 'shops/a/queue/q1')))
+  })
+  it('lets a barber read only walk-ins in their own queue', async () => {
+    await assertSucceeds(getDoc(doc(barber('a', 'b1'), 'shops/a/queue/q1')))
+    await assertFails(getDoc(doc(barber('a', 'b1'), 'shops/a/queue/q2')))
+    await assertFails(getDoc(doc(barber('a', 'b2'), 'shops/a/queue/q1')))
+    await assertFails(getDoc(doc(barber('b', 'b1'), 'shops/a/queue/q1')))
+  })
+  it('a barber\'s list query must be limited to their own barberId', async () => {
+    const q = (db, ...c) => getDocs(query(collection(db, 'shops/a/queue'), ...c))
+    await assertSucceeds(q(barber('a', 'b1'), where('barberId', '==', 'b1')))
+    await assertSucceeds(q(barber('a', 'b1'), where('barberId', '==', 'b1'), where('status', 'in', ['waiting', 'in_service'])))
+    await assertFails(q(barber('a', 'b1')))
+    await assertFails(q(barber('a', 'b1'), where('barberId', '==', 'b2')))
+    await assertSucceeds(q(owner('a')))
+    await assertSucceeds(q(owner('a'), where('barberId', '==', 'b2')))
+  })
+  it('denies customers, signed-out users and the platform admin', async () => {
+    for (const db of [anon(), customer('cust1'), admin()]) {
+      await assertFails(getDoc(doc(db, 'shops/a/queue/q1')))
+      await assertFails(getDocs(collection(db, 'shops/a/queue')))
+    }
+  })
+  it('denies every client write: create, update and delete, including the owner and the barber\'s own queue', async () => {
+    const fresh = { shopId: 'a', barberId: 'b1', walkInName: 'New', serviceId: 's1', durationMin: 30, status: 'waiting' }
+    for (const db of [anon(), customer('cust1'), owner('a'), barber('a', 'b1'), admin()]) {
+      await assertFails(setDoc(doc(db, 'shops/a/queue/fresh'), fresh))
+      await assertFails(updateDoc(doc(db, 'shops/a/queue/q1'), { status: 'in_service' }))
+      await assertFails(updateDoc(doc(db, 'shops/a/queue/q1'), { durationMin: 1 }))
+      await assertFails(deleteDoc(doc(db, 'shops/a/queue/q1')))
+    }
+  })
+  it('delay warnings are readable like other notification tasks: the owner and the booking\'s barber only', async () => {
+    await assertSucceeds(getDoc(doc(owner('a'), 'notifications/n3')))
+    await assertSucceeds(getDoc(doc(barber('a', 'b1'), 'notifications/n3')))
+    await assertFails(getDoc(doc(barber('a', 'b2'), 'notifications/n3')))
+    await assertFails(getDoc(doc(owner('b'), 'notifications/n3')))
+    await assertFails(getDoc(doc(customer('cust1'), 'notifications/n3')))
+    await assertFails(getDoc(doc(anon(), 'notifications/n3')))
+    await assertFails(setDoc(doc(owner('a'), 'notifications/n3'), { shopId: 'a', barberId: 'b1', type: 'delay' }))
+    await assertFails(updateDoc(doc(owner('a'), 'notifications/n3'), { status: 'cancelled' }))
   })
 })

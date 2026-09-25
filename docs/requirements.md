@@ -96,6 +96,7 @@ Where walk-ins and bookings share barbers, track running delay and warn affected
 - Notifies the customer when projected delay exceeds 10 minutes.
 - Sends the warning at least 15 minutes before the original start time where detectable.
 - Calculates delay from actual service start and completion times.
+- Sends at most one warning per booking, and never changes a booking's time automatically (decisions A5 addendum).
 
 ### FR-11 Booking history and rebooking — Medium — Extension — UI-C4, T-F11
 Verified returning customers see past appointments and rebook in one action.

@@ -1074,3 +1074,150 @@ describe('FR-12 no-show', () => {
     assert.ok(a.status === 'NO_SHOW' || a.status === 'CONFIRMED')
   })
 })
+
+// FR-10: queue changes and delay warnings under concurrent calls (decisions A5 addendum).
+describe('FR-10 queue and delay warnings', () => {
+  const walkInShops = []
+  after(async () => {
+    for (let i = 0; i < walkInShops.length; i += 30) {
+      const snap = await db.collection('notifications').where('shopId', 'in', walkInShops.slice(i, i + 30)).get()
+      await Promise.all(snap.docs.map((d) => d.ref.delete()))
+    }
+  })
+  const shopWithOwner = async (barbers = ['b1']) => {
+    const shopId = await makeShop(barbers)
+    walkInShops.push(shopId)
+    return { shopId, owner: await staffToken({ shopId, role: 'owner' }) }
+  }
+  const addWalkIn = (owner, shopId, over = {}) =>
+    call('addWalkIn', { requestId: randomUUID(), barberId: 'b1', walkInName: 'Walk-in', serviceId: 'cut', ...over }, owner)
+  const queueDocs = async (shopId) => (await db.collection(`shops/${shopId}/queue`).get()).docs.map((d) => ({ id: d.id, ...d.data() }))
+  const delayTasks = async (shopId) => (await db.collection('notifications').where('shopId', '==', shopId).where('type', '==', 'delay').get()).docs.map((d) => ({ id: d.id, ...d.data() }))
+  /** An appointment written directly, in any state (times in ms). */
+  async function seedApt(shopId, barberId, start, { durationMin = 30, status = 'CONFIRMED', actualStart } = {}) {
+    const requestId = randomUUID()
+    await db.doc(`appointments/${requestId}`).set({
+      requestId, shopId, barberId, serviceId: 'cut', customerId: 'cust-fr10', customerName: 'Seed', customerPhoneMasked: '+65 9••• ••00',
+      start: Timestamp.fromMillis(start), end: Timestamp.fromMillis(start + durationMin * MIN), status, holdExpiresAt: null,
+      priceCents: 2500, durationMin, ...(actualStart ? { actualStart: Timestamp.fromMillis(actualStart) } : {}),
+    })
+    return requestId
+  }
+
+  it('30 simultaneous addWalkIn calls with one requestId create exactly one entry', async () => {
+    const { shopId, owner } = await shopWithOwner()
+    const requestId = randomUUID()
+    const results = await Promise.all(Array.from({ length: 30 }, () => addWalkIn(owner, shopId, { requestId })))
+    assert.ok(results.every((r) => r.ok), JSON.stringify(results.filter((r) => !r.ok)))
+    const docs = await queueDocs(shopId)
+    assert.equal(docs.length, 1)
+    assert.equal(docs[0].id, requestId)
+    assert.equal(docs[0].status, 'waiting')
+  })
+
+  it('20 simultaneous walk-ins with different IDs are all queued', async () => {
+    const { shopId, owner } = await shopWithOwner()
+    const results = await Promise.all(Array.from({ length: 20 }, () => addWalkIn(owner, shopId)))
+    assert.ok(results.every((r) => r.ok), JSON.stringify(results.filter((r) => !r.ok)))
+    const docs = await queueDocs(shopId)
+    assert.equal(docs.length, 20)
+    assert.ok(docs.every((d) => d.status === 'waiting'))
+  })
+
+  it('10 different walk-ins started at once: exactly one starts, the rest get BARBER_BUSY', async () => {
+    const { shopId, owner } = await shopWithOwner()
+    const ids = []
+    for (let i = 0; i < 10; i++) ids.push((await addWalkIn(owner, shopId)).data.requestId)
+    const results = await Promise.all(ids.map((requestId) => call('startWalkIn', { requestId }, owner)))
+    assert.equal(results.filter((r) => r.ok).length, 1, JSON.stringify(results))
+    assert.ok(results.filter((r) => !r.ok).every((r) => r.reason === 'BARBER_BUSY'), JSON.stringify(results))
+    const docs = await queueDocs(shopId)
+    assert.equal(docs.filter((d) => d.status === 'in_service').length, 1)
+    assert.equal(docs.filter((d) => d.status === 'waiting').length, 9)
+  })
+
+  it('the same walk-in started 15 times at once: all succeed, one actualStart', async () => {
+    const { shopId, owner } = await shopWithOwner()
+    const requestId = (await addWalkIn(owner, shopId)).data.requestId
+    const results = await Promise.all(Array.from({ length: 15 }, () => call('startWalkIn', { requestId }, owner)))
+    assert.ok(results.every((r) => r.ok), JSON.stringify(results.filter((r) => !r.ok)))
+    const [doc] = await queueDocs(shopId)
+    assert.equal(doc.status, 'in_service')
+    assert.ok(doc.actualStart)
+  })
+
+  it('start racing remove on one walk-in ends in exactly one consistent state', async () => {
+    const { shopId, owner } = await shopWithOwner()
+    const requestId = (await addWalkIn(owner, shopId)).data.requestId
+    const results = await Promise.all(Array.from({ length: 20 }, (_, i) =>
+      call(i % 2 ? 'removeWalkIn' : 'startWalkIn', { requestId }, owner)))
+    assert.ok(results.every((r) => r.ok || r.reason === 'INVALID_STATE'), JSON.stringify(results))
+    const [doc] = await queueDocs(shopId)
+    assert.ok(['removed', 'in_service'].includes(doc.status), doc.status)
+    assert.equal(Boolean(doc.actualStart), doc.status === 'in_service')
+  })
+
+  it('12 simultaneous queue changes on a barber who is running late write exactly one delay task for the affected booking', async () => {
+    const { shopId, owner } = await shopWithOwner()
+    const now = Date.now()
+    await seedApt(shopId, 'b1', now - 25 * MIN, { durationMin: 75, status: 'IN_SERVICE', actualStart: now - 20 * MIN }) // busy until +55
+    const late = await seedApt(shopId, 'b1', now + 30 * MIN)
+    const results = await Promise.all(Array.from({ length: 12 }, () => addWalkIn(owner, shopId)))
+    assert.ok(results.every((r) => r.ok), JSON.stringify(results.filter((r) => !r.ok)))
+    const tasks = await delayTasks(shopId)
+    assert.equal(tasks.length, 1, JSON.stringify(tasks.map((t) => t.id)))
+    assert.equal(tasks[0].id, `${late}_delay`)
+    assert.deepEqual([tasks[0].status, tasks[0].rev, tasks[0].attempts.length, tasks[0].delayMin], ['pending', 1, 0, 25])
+  })
+
+  it('startService racing walk-in changes: one task for the booking it delays, and the booking\'s time is untouched', async () => {
+    const { shopId, owner } = await shopWithOwner()
+    const now = Date.now()
+    const first = await seedApt(shopId, 'b1', now - 40 * MIN, { durationMin: 60 }) // slot [-40, +20): not yet started
+    const next = await seedApt(shopId, 'b1', now + 30 * MIN)
+    const before = await apt(next)
+    const results = await Promise.all([
+      call('startService', { requestId: first }, owner),
+      ...Array.from({ length: 8 }, () => addWalkIn(owner, shopId)),
+    ])
+    assert.ok(results.every((r) => r.ok), JSON.stringify(results.filter((r) => !r.ok)))
+    const tasks = await delayTasks(shopId)
+    assert.equal(tasks.length, 1)
+    assert.equal(tasks[0].id, `${next}_delay`)
+    assert.ok(tasks[0].delayMin >= 30 && tasks[0].delayMin <= 31, `delayMin ${tasks[0].delayMin}`)
+    assert.deepEqual(await apt(next), before)
+    assert.equal((await apt(first)).status, 'IN_SERVICE')
+  })
+
+  it('two delayed bookings under concurrent recalculation get one task each, never more', async () => {
+    const { shopId, owner } = await shopWithOwner()
+    const now = Date.now()
+    await seedApt(shopId, 'b1', now - 25 * MIN, { durationMin: 90, status: 'IN_SERVICE', actualStart: now - 20 * MIN }) // busy until +70
+    const a = await seedApt(shopId, 'b1', now + 30 * MIN)
+    const b = await seedApt(shopId, 'b1', now + 60 * MIN)
+    await Promise.all(Array.from({ length: 15 }, () => addWalkIn(owner, shopId)))
+    const ids = (await delayTasks(shopId)).map((t) => t.id).sort()
+    assert.deepEqual(ids, [`${a}_delay`, `${b}_delay`].sort())
+  })
+
+  it('a booking too close to its start gets no task however many recalculations run', async () => {
+    const { shopId, owner } = await shopWithOwner()
+    const now = Date.now()
+    await seedApt(shopId, 'b1', now - 25 * MIN, { durationMin: 120, status: 'IN_SERVICE', actualStart: now - 20 * MIN })
+    await seedApt(shopId, 'b1', now + 10 * MIN)
+    await Promise.all(Array.from({ length: 8 }, () => addWalkIn(owner, shopId)))
+    assert.equal((await delayTasks(shopId)).length, 0)
+  })
+
+  it('another barber\'s bookings are unaffected by a late barber', async () => {
+    const { shopId, owner } = await shopWithOwner(['b1', 'b2'])
+    const now = Date.now()
+    await seedApt(shopId, 'b1', now - 25 * MIN, { durationMin: 90, status: 'IN_SERVICE', actualStart: now - 20 * MIN })
+    await seedApt(shopId, 'b1', now + 30 * MIN)
+    const other = await seedApt(shopId, 'b2', now + 30 * MIN)
+    await Promise.all(Array.from({ length: 6 }, () => addWalkIn(owner, shopId)))
+    const tasks = await delayTasks(shopId)
+    assert.equal(tasks.length, 1)
+    assert.ok(!tasks.some((t) => t.id === `${other}_delay`))
+  })
+})

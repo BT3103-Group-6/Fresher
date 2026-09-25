@@ -86,8 +86,10 @@ service cloud.firestore {
       match /dailyStats/{day} {
         allow read: if isOwnerOf(shopId);
       }
+      // FR-10: walk-ins, written only by the queue callables. The owner reads all; a barber reads only their own
+      // (a barber's query must include barberId == own).
       match /queue/{entryId} {
-        allow read: if isStaffOf(shopId);
+        allow read: if isOwnerOf(shopId) || isBarberOf(shopId, resource.data.barberId);
       }
     }
 

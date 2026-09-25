@@ -9,6 +9,7 @@ const {
   transact, failure, isStaffFor, summary, auditRecord, checkRequestId,
   MINUTE_MS,
 } = require("./booking");
+const queue = require("./queue");
 
 const START_EARLY_MS = 60 * MINUTE_MS; // start allowed from start - 60 min.
 const NO_SHOW_AFTER_MS = 15 * MINUTE_MS; // mark allowed from start + 15 min.
@@ -99,7 +100,23 @@ async function transition(request, step) {
       depRef = db.doc(`deposits/${apt.depositId}`);
       deposit = (await tx.get(depRef)).data();
     }
+    // FR-10: a start or finish changes the barber's projected delays. Read
+    // them now (before any write), with this change applied in memory.
+    let recalc = null;
+    if (change.action === "start" || change.action === "finish") {
+      const state = await queue.loadState(
+          tx, db, apt.shopId, apt.barberId, at);
+      const actualStart = change.update.actualStart ?
+        at : (apt.actualStart ? apt.actualStart.toMillis() : null);
+      recalc = await queue.planRecalc(
+          tx, db, {shopId: apt.shopId, barberId: apt.barberId},
+          queue.upsertAppointment(state, {
+            id: requestId, status: change.to, start: apt.start.toMillis(),
+            durationMin: apt.durationMin, actualStart,
+          }), at);
+    }
     tx.update(aptRef, change.update);
+    if (recalc) queue.applyRecalc(tx, recalc);
     if (deposit && deposit.status === change.deposit.from) {
       tx.update(depRef, {status: change.deposit.to});
     }

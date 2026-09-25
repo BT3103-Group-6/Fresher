@@ -6,6 +6,7 @@
 const {FieldValue, Timestamp} = require("firebase-admin/firestore");
 const {releaseInTx, transact} = require("./booking");
 const {messageBody, CHANNEL, MINUTE_MS} = require("./notifications");
+const {sweepQueueDelays} = require("./queue");
 
 const BATCH = 200; // per run (limitation L22).
 const LEASE_MS = 2 * MINUTE_MS;
@@ -59,6 +60,7 @@ function claim(db, ref, now) {
     return {
       type: task.type,
       rev: task.rev,
+      delayMin: task.delayMin,
       start: apt.start.toMillis(),
       phone: custSnap.exists ? custSnap.data().phoneE164 : null,
       attemptNo: task.attempts.filter((a) => a.rev === task.rev).length + 1,
@@ -128,7 +130,7 @@ async function sendDueTasks(db, provider, now) {
       result = c.phone ?
         await provider.send({
           to: c.phone,
-          body: messageBody(c.type, c.start),
+          body: messageBody(c.type, c.start, c.delayMin),
           key: `${doc.id}:${c.rev}:${c.attemptNo}`,
         }) :
         {ok: false, error: "NO_PHONE_NUMBER"};
@@ -210,11 +212,13 @@ async function sweepWaitlist(db, now) {
  * @param {Object} db Firestore instance.
  * @param {Object} provider Messaging provider.
  * @param {number} now Current time (ms); defaults to the real clock.
- * @return {Promise<Object>} {notifications, holds, waitlist}.
+ * @return {Promise<Object>} {queue, notifications, holds, waitlist}.
  */
 async function runAll(db, provider, now) {
   const at = now === undefined ? Date.now() : now;
+  // Queue first, so a delay warning it writes is sent in this same run.
   return {
+    queue: await sweepQueueDelays(db, at, BATCH),
     notifications: await sendDueTasks(db, provider, at),
     holds: await sweepExpiredHolds(db, at),
     waitlist: await sweepWaitlist(db, at),

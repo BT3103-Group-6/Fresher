@@ -29,6 +29,13 @@ const router = createRouter({
       component: () => import('@/views/staff/ScheduleView.vue'),
       meta: { requiresStaff: true },
     },
+    // Queue management (FR-10): barbers see only their own queue, owners pick a barber.
+    {
+      path: '/staff/queue',
+      name: 'queue',
+      component: () => import('@/views/staff/QueueView.vue'),
+      meta: { requiresStaff: true },
+    },
     // Shop dashboard (FR-14): owner only; barbers are redirected to their schedule by the guard below.
     {
       path: '/staff/dashboard',

@@ -184,6 +184,14 @@ exports.processNotifications = onSchedule(
     {schedule: "every 1 minutes", timeZone: "Asia/Singapore"},
     () => sweep.runAll(getFirestore(), messaging.mockProvider()));
 
+// FR-10: walk-in queue. The delay recalculation also runs inside startService
+// and finishService and in the sweep above (decisions A5 addendum).
+const queue = require("./queue");
+exports.addWalkIn = onCall((request) => queue.addWalkIn(request));
+exports.startWalkIn = onCall((request) => queue.startWalkIn(request));
+exports.finishWalkIn = onCall((request) => queue.finishWalkIn(request));
+exports.removeWalkIn = onCall((request) => queue.removeWalkIn(request));
+
 // Dev only: the emulator does not fire schedules, so this runs one sweep on
 // demand (`npm run sweep`). It is not exported outside the Functions emulator,
 // so it never exists in a deployment.
