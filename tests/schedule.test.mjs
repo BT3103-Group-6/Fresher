@@ -2,7 +2,7 @@
 // flags and the block form's validation. No emulator needed.
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { availableActions, blockTimeToMs, dayBounds, displayStatus, isActive, isBooking, overlappingBlocks, partitionDay, timeOptions, toAppointment, validateBlockForm } from '../src/lib/schedule.js'
+import { MAX_REMINDER_ATTEMPTS, availableActions, reminderSummary, tasksByBooking, toReminderTask, blockTimeToMs, dayBounds, displayStatus, isActive, isBooking, overlappingBlocks, partitionDay, timeOptions, toAppointment, validateBlockForm } from '../src/lib/schedule.js'
 import { sgTimeToMs } from '../src/lib/slots.js'
 
 const KEY = '20300107'
@@ -126,5 +126,105 @@ describe('availableActions (FR-12)', () => {
   it('offers nothing for other states, including an expired hold', () => {
     for (const status of ['COMPLETED', 'CANCELLED', 'EXPIRED', 'PENDING_PAYMENT']) assert.deepEqual(ids(apt('a', status, '10:00', '10:30'), NOW), [])
     assert.deepEqual(ids(apt('a', 'HELD', '13:00', '13:30', { holdExpiresAt: NOW - 1 }), NOW), [])
+  })
+})
+
+describe('reminderSummary (FR-09: reminder status per booking on UI-B1)', () => {
+  const task = (type, over = {}) => ({ type, status: 'pending', dueAt: at('10:00'), nextAttemptAt: at('10:00'), cancelReason: null, attempts: [], bookingId: 'b', ...over })
+  const by = (rows) => Object.fromEntries(rows.map((r) => [r.type, r]))
+
+  it('always returns confirmation, 24 h and 2 h rows, in that order', () => {
+    assert.deepEqual(reminderSummary([], NOW, at('18:00')).map((r) => r.type), ['confirmation', 'reminder24h', 'reminder2h'])
+  })
+  const HOUR = 3600e3
+  const START = NOW + 16 * HOUR
+  const sentConfirmation = (plannedAt) => task('confirmation', { status: 'sent', nextAttemptAt: null, plannedAt, attempts: [{ at: plannedAt, outcome: 'sent' }] })
+
+  it('a booking with no tasks at all (made before FR-09) is never blamed on short notice, even 16 h away', () => {
+    const rows = reminderSummary([], NOW, START)
+    assert.deepEqual(rows.map((r) => r.state), ['missing', 'missing', 'missing'])
+    assert.equal(rows[1].text, 'No reminder recorded')
+    assert.equal(rows[2].text, 'No reminder recorded')
+    assert.equal(rows[0].text, 'No confirmation recorded')
+    assert.equal(rows.some((r) => /too close/.test(r.text)), false)
+  })
+  it('says "too close" only when the booking was made after the reminder was due', () => {
+    // Booked 5 h ahead: the 24 h reminder was already past, the 2 h one should exist.
+    const start = NOW + 5 * HOUR
+    const rows = by(reminderSummary([sentConfirmation(NOW)], NOW, start))
+    assert.deepEqual([rows.reminder24h.state, rows.reminder24h.text], ['not-scheduled', 'Not scheduled: booked too close to the start'])
+    assert.deepEqual([rows.reminder2h.state, rows.reminder2h.text], ['missing', 'No reminder recorded'])
+  })
+  it('under 2 h ahead both reminders are "too close"', () => {
+    const rows = by(reminderSummary([sentConfirmation(NOW)], NOW, NOW + HOUR))
+    assert.equal(rows.reminder24h.state, 'not-scheduled')
+    assert.equal(rows.reminder2h.state, 'not-scheduled')
+  })
+  it('follows the server boundary: made exactly 24 h (or 2 h) ahead a reminder was due, 1 ms later it was not', () => {
+    const start = NOW + 24 * HOUR
+    assert.equal(by(reminderSummary([sentConfirmation(NOW)], NOW, start)).reminder24h.state, 'missing')
+    assert.equal(by(reminderSummary([sentConfirmation(NOW + 1)], NOW, start)).reminder24h.state, 'not-scheduled')
+    const near = NOW + 2 * HOUR
+    assert.equal(by(reminderSummary([sentConfirmation(NOW)], NOW, near)).reminder2h.state, 'missing')
+    assert.equal(by(reminderSummary([sentConfirmation(NOW + 1)], NOW, near)).reminder2h.state, 'not-scheduled')
+  })
+  it('a booking made well ahead whose reminders are absent says "No reminder recorded", not "too close"', () => {
+    const rows = by(reminderSummary([sentConfirmation(NOW - 48 * HOUR)], NOW, START))
+    assert.deepEqual([rows.reminder24h.state, rows.reminder2h.state], ['missing', 'missing'])
+    assert.equal(rows.reminder24h.text, 'No reminder recorded')
+  })
+  it('a confirmation task without plannedAt falls back to createdAt', () => {
+    const stamp = (ms) => ({ toMillis: () => ms })
+    const t = toReminderTask('x_confirmation', { bookingId: 'x', type: 'confirmation', status: 'sent', rev: 1, dueAt: stamp(1), createdAt: stamp(77), attempts: [] })
+    assert.equal(t.plannedAt, 77)
+    assert.equal(toReminderTask('x_confirmation', { bookingId: 'x', type: 'confirmation', status: 'sent', rev: 1, dueAt: stamp(1), plannedAt: stamp(88), createdAt: stamp(77), attempts: [] }).plannedAt, 88)
+  })
+  it('never labels an existing task as missing', () => {
+    const rows = reminderSummary([sentConfirmation(NOW), task('reminder2h', { dueAt: NOW + 1 })], NOW, NOW + 5 * HOUR)
+    assert.equal(rows[2].state, 'scheduled')
+  })
+  it('shows a pending task as scheduled with its due time', () => {
+    const r = by(reminderSummary([task('reminder2h', { dueAt: at('13:00') })], NOW)).reminder2h
+    assert.equal(r.state, 'scheduled')
+    assert.match(r.text, /^Due .*1:00 PM/)
+  })
+  it('shows a sent task with when it went out (the last successful attempt)', () => {
+    const attempts = [{ at: at('09:00'), outcome: 'failed' }, { at: at('09:01'), outcome: 'sent' }]
+    const r = by(reminderSummary([task('confirmation', { status: 'sent', nextAttemptAt: null, attempts })], NOW)).confirmation
+    assert.equal(r.state, 'sent')
+    assert.match(r.text, /9:01 AM/)
+  })
+  it('shows a task that failed once and will try again as retrying, counting the attempt', () => {
+    const attempts = [{ at: at('11:00'), outcome: 'failed' }]
+    const r = by(reminderSummary([task('reminder2h', { nextAttemptAt: at('11:01'), attempts })], NOW)).reminder2h
+    assert.equal(r.state, 'retrying')
+    assert.match(r.text, /attempt 2 of 3/)
+    assert.match(r.text, /11:01 AM/)
+  })
+  it('shows a task out of attempts as failed', () => {
+    const attempts = [1, 2, 3].map((n) => ({ at: at('11:00') + n * 60e3, outcome: 'failed' }))
+    const r = by(reminderSummary([task('reminder2h', { status: 'failed', nextAttemptAt: null, attempts })], NOW)).reminder2h
+    assert.equal(r.state, 'failed')
+    assert.match(r.text, /Failed after 3 attempts/)
+    assert.equal(MAX_REMINDER_ATTEMPTS, 3)
+  })
+  it('explains why a task was cancelled', () => {
+    const cancelled = (cancelReason) => by(reminderSummary([task('reminder24h', { status: 'cancelled', cancelReason })], NOW)).reminder24h
+    assert.match(cancelled('booking_cancelled').text, /with the booking/)
+    assert.match(cancelled('past_due').text, /moved/)
+    assert.equal(cancelled(null).state, 'cancelled')
+  })
+  it('names the day for a due time on another day', () => {
+    const r = by(reminderSummary([task('reminder24h', { dueAt: at('10:00') - 24 * 3600e3 })], NOW)).reminder24h
+    assert.match(r.text, /^Due \w+, \d+ \w+ 10:00 AM/)
+  })
+  it('toReminderTask keeps only the current revision\'s attempts and tasksByBooking groups by booking', () => {
+    const stamp = (ms) => ({ toMillis: () => ms })
+    const t = toReminderTask('x_reminder2h', {
+      bookingId: 'x', type: 'reminder2h', status: 'pending', rev: 2, dueAt: stamp(5), nextAttemptAt: null,
+      attempts: [{ rev: 1, at: stamp(1), outcome: 'sent' }, { rev: 2, at: stamp(4), outcome: 'failed', error: 'E' }],
+    })
+    assert.deepEqual(t.attempts, [{ at: 4, outcome: 'failed', error: 'E' }])
+    assert.deepEqual(Object.keys(tasksByBooking([t, { ...t, bookingId: 'y' }])).sort(), ['x', 'y'])
   })
 })

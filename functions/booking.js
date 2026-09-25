@@ -5,6 +5,7 @@
 const {HttpsError} = require("firebase-functions/https");
 const {FieldValue, Timestamp, getFirestore} =
   require("firebase-admin/firestore");
+const notifications = require("./notifications");
 
 const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 const SG_OFFSET_MS = 8 * 60 * 60 * 1000; // Asia/Singapore has no DST.
@@ -395,6 +396,7 @@ async function confirmBooking(request) {
     tx.set(aptRef, confirmed);
     tx.set(db.doc(`customers/${uid}`),
         {phoneE164: phone, displayName}, {merge: true});
+    notifications.writeTasks(tx, db, confirmed, null, at); // FR-09.
     tx.set(db.doc(`auditLog/${requestId}_CONFIRMED`),
         auditRecord({...audit, action: "confirm", to: "CONFIRMED"}));
     return {summary: summary(confirmed)};
@@ -407,6 +409,42 @@ async function confirmBooking(request) {
 }
 
 /**
+ * Moves a HELD appointment with no customer to EXPIRED, frees its interval
+ * and writes the audit record, all inside the caller's transaction. Shared by
+ * releaseHold and the scheduled sweep (FR-09). Re-checks the state, so it
+ * never overrides a concurrent confirmBooking.
+ * @param {Transaction} tx Firestore transaction.
+ * @param {DocumentReference} aptRef The appointment.
+ * @param {Object} rel {actorUid, role, action, now?, onlyExpired?}: onlyExpired
+ *   also requires holdExpiresAt <= now (the sweep).
+ * @return {Promise<boolean>} True if the hold was released.
+ */
+async function releaseInTx(tx, aptRef, rel) {
+  const aptSnap = await tx.get(aptRef);
+  if (!aptSnap.exists) return false;
+  const apt = aptSnap.data();
+  if (apt.status !== "HELD" || apt.customerId !== null) return false;
+  const at = rel.now === undefined ? Date.now() : rel.now;
+  if (rel.onlyExpired &&
+      !(apt.holdExpiresAt && apt.holdExpiresAt.toMillis() <= at)) {
+    return false;
+  }
+  const schedRef = scheduleRefOf(apt);
+  const schedSnap = await tx.get(schedRef);
+  const others = liveIntervals(
+      schedSnap.data() && schedSnap.data().intervals, at)
+      .filter((iv) => !isHoldOf(apt, iv));
+  tx.set(schedRef, {intervals: others, version: FieldValue.increment(1)},
+      {merge: true});
+  tx.update(aptRef, {status: "EXPIRED", holdExpiresAt: null});
+  tx.set(getFirestore().doc(`auditLog/${apt.requestId}_EXPIRED`),
+      auditRecord({
+        apt, actorUid: rel.actorUid, role: rel.role, action: rel.action,
+        from: "HELD", to: "EXPIRED", now: at}));
+  return true;
+}
+
+/**
  * releaseHold: HELD (no customer yet) -> EXPIRED; frees the slot. Used after
  * three failed OTPs or when the customer abandons the flow. Anything else is
  * a no-op.
@@ -415,29 +453,10 @@ async function confirmBooking(request) {
  */
 async function releaseHold(data) {
   const requestId = checkRequestId(data.requestId);
-  const db = getFirestore();
-  const aptRef = db.doc(`appointments/${requestId}`);
-  return transact(async (tx) => {
-    const aptSnap = await tx.get(aptRef);
-    if (!aptSnap.exists) return {released: false};
-    const apt = aptSnap.data();
-    if (apt.status !== "HELD" || apt.customerId !== null) {
-      return {released: false};
-    }
-    const schedRef = scheduleRefOf(apt);
-    const schedSnap = await tx.get(schedRef);
-    const at = Date.now();
-    const others = liveIntervals(
-        schedSnap.data() && schedSnap.data().intervals, at)
-        .filter((iv) => !isHoldOf(apt, iv));
-    tx.set(schedRef, {intervals: others, version: FieldValue.increment(1)},
-        {merge: true});
-    tx.update(aptRef, {status: "EXPIRED", holdExpiresAt: null});
-    tx.set(db.doc(`auditLog/${requestId}_EXPIRED`), auditRecord({
-      apt, actorUid: null, role: "customer", action: "release", from: "HELD",
-      to: "EXPIRED", now: at}));
-    return {released: true};
-  });
+  const aptRef = getFirestore().doc(`appointments/${requestId}`);
+  const released = await transact((tx) => releaseInTx(tx, aptRef, {
+    actorUid: null, role: "customer", action: "release"}));
+  return {released};
 }
 
 /**
@@ -522,6 +541,7 @@ async function cancelBooking(request) {
     const refs = [schedRef];
     if (!staff) refs.push(db.doc(`shops/${apt.shopId}`));
     const [schedSnap, shopSnap] = await tx.getAll(...refs);
+    const tasks = await notifications.readTasks(tx, db, requestId);
     const at = Date.now();
     const start = apt.start.toMillis();
 
@@ -556,6 +576,7 @@ async function cancelBooking(request) {
     tx.set(schedRef, {intervals: remaining, version: FieldValue.increment(1)},
         {merge: true});
     tx.update(aptRef, {status: "CANCELLED", lateCancel: late});
+    notifications.cancelTasks(tx, tasks); // FR-09.
     if (late) { // "flag" policy: cancellation proceeds and is counted.
       tx.set(db.doc(`customers/${uid}/shopStats/${apt.shopId}`),
           {lateCancels: FieldValue.increment(1)}, {merge: true});
@@ -645,6 +666,7 @@ async function reschedule(request) {
       throw failure("aborted", "BOOKING_CHANGED",
           "This booking just changed. Please refresh.");
     }
+    const tasks = await notifications.readTasks(tx, db, requestId);
     const at = Date.now();
     const oldStart = apt.start.toMillis();
     if (oldStart <= at) {
@@ -685,6 +707,9 @@ async function reschedule(request) {
       }, {merge: true});
     }
     tx.update(aptRef, {start: moved.start, end: moved.end});
+    // FR-09: recalculate the reminders for the new start.
+    notifications.writeTasks(
+        tx, db, {...apt, start: moved.start, end: moved.end}, tasks, at);
     tx.set(db.collection("auditLog").doc(), auditRecord({
       apt, actorUid: uid, role: "customer", action: "reschedule",
       from: "CONFIRMED", to: "CONFIRMED", now: at}));
@@ -694,7 +719,7 @@ async function reschedule(request) {
 
 module.exports = {
   holdSlot, confirmBooking, releaseHold, cancelBooking, reschedule,
-  isLate, requireFreshCustomer,
+  releaseInTx, isLate, requireFreshCustomer,
   // Shared with service.js (FR-12).
   isStaffFor, summary, auditRecord, checkRequestId, MINUTE_MS,
   // Shared with blocks.js (FR-08).

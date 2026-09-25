@@ -38,7 +38,7 @@ How each requirement is delivered: the screen it appears on, and the logic behin
 | FR-06 | Service configuration | UI-O1 Shop configuration | Owner saves to `services`; rules check name, 5-minute duration and price. Customers' listeners update within seconds. Appointments keep a price/duration snapshot. |
 | FR-07 | Multiple barbers | UI-O1, UI-C2 | `addBarber` creates the barber and sets claims. "Any available" tries eligible barbers by fewest bookings that day; the schedule lock prevents overlaps. Deactivation hides the barber from new bookings only. |
 | FR-08 | Personal time blocks | UI-B1 Barber schedule | `createBlock` adds a block interval to the schedule doc (and a `blocks` doc) in one transaction and returns any overlapping bookings and live holds instead of cancelling them; `removeBlock` undoes it. Barbers block only their own time, owners any barber in their shop; blocks are single-day and may not overlap another block (decisions A12). UI-B1 (`/staff/schedule`) shows the day and treats an expired HELD appointment as expired (L2). |
-| FR-09 | Automated reminders | UI-B1 (delivery status) | On confirmation, a trigger creates `notifications` tasks for 24 h and 2 h; a scheduled function sends due tasks via the mock provider and logs each attempt. Cancel deletes tasks; reschedule recreates them. |
+| FR-09 | Automated reminders | UI-B1 (delivery status) | `confirmBooking` creates `notifications` tasks (confirmation, 24 h, 2 h; past reminders skipped) in its own transaction; a scheduled function (every minute) sends due tasks via the mock provider, logs each attempt and retries up to 2 times (decisions A4 addendum). Cancel marks pending tasks `cancelled`; reschedule recalculates them. The same job moves expired HELD appointments to EXPIRED. UI-B1 shows reminder status per booking. `devRunSweep` (emulator only) runs the job by hand. |
 | FR-10 | Queue reconciliation | UI-B2 Queue management | Staff start/finish actions record `actualStart`/`actualEnd`; projected delay is computed from them and queued walk-ins; delay > 10 min triggers a customer warning. |
 | FR-11 | Booking history and rebooking | UI-C4 My bookings | After OTP, Vue queries `appointments` by `customerId` (one query; Upcoming and History are split client-side, decisions A13). Rebook resets the draft with the same shop, barber and service, and UI-C2 drops any part that is no longer active, saying why; then the normal booking flow applies. No new callables. |
 | FR-12 | No-show tracking | UI-B1 Barber schedule | `markNoShow` allowed from start + 15 min; increments `shopStats.noShowCount`. `reverseNoShow` within 24 h decrements it. Both write audit records. |
@@ -108,12 +108,12 @@ Written only by `createBlock`/`removeBlock`. Read by the owner, or by the barber
 Sub-collection `shopStats/{shopId}`: `noShowCount, lateCancels, depositRequired (FR-13)`
 
 ### notifications/{taskId}
-`bookingId, shopId (for staff-scoped rules), type ("confirmation" | "reminder24h" | "reminder2h" | "delay" | "waitlistOffer" | "change"), channel, dueAt, status, attempts[]: { at, outcome }`
-taskId is deterministic (`{bookingId}_{type}`) to prevent duplicates.
+`bookingId, shopId (for staff-scoped rules), barberId, apptStart (both for UI-B1's query), type ("confirmation" | "reminder24h" | "reminder2h" | "delay" | "waitlistOffer" | "change"), channel, dueAt, status ("pending" | "sent" | "failed" | "cancelled"), nextAttemptAt (only while still to be sent; also the claim lease), plannedAt (on the confirmation task: when the reminders were last planned), rev, attempts[]: { at, channel, outcome, error?, rev }`
+taskId is deterministic (`{bookingId}_{type}`) to prevent duplicates. Written only by functions; read by the shop owner or the matching barber. No phone number is stored; the sender reads `customers/{customerId}`.
 
 ### auditLog/{eventId}
 `bookingId, shopId, actorUid, role, action, fromStatus, toStatus, at, expireAt (= at + 12 months, Firestore TTL policy, NFR-08)`
-`action` says what happened, because some records have the same from and to status: `hold` (none→HELD), `confirm` (HELD→CONFIRMED), `release` (HELD→EXPIRED, by `releaseHold` or lazily when a confirm finds the hold expired), `cancel` (CONFIRMED→CANCELLED, by customer or staff), `reschedule` (CONFIRMED→CONFIRMED, the slot moved) `lateCancelRefused` (CONFIRMED→CONFIRMED, a customer cancel refused under the `block` policy), `start` (CONFIRMED→IN_SERVICE), `finish` (IN_SERVICE→COMPLETED), `noShow` (CONFIRMED→NO_SHOW) and `noShowReversed` (NO_SHOW→CONFIRMED). Records for transitions use the deterministic ID `{bookingId}_{TO}`; `reschedule`, `lateCancelRefused`, `noShow` and `noShowReversed` can repeat (or would collide with `confirm`), so they use auto IDs.
+`action` says what happened, because some records have the same from and to status: `hold` (none→HELD), `confirm` (HELD→CONFIRMED), `release` (HELD→EXPIRED, by `releaseHold` or lazily when a confirm finds the hold expired), `expire` (HELD→EXPIRED, by the scheduled sweep; role `system`, no actor), `cancel` (CONFIRMED→CANCELLED, by customer or staff), `reschedule` (CONFIRMED→CONFIRMED, the slot moved) `lateCancelRefused` (CONFIRMED→CONFIRMED, a customer cancel refused under the `block` policy), `start` (CONFIRMED→IN_SERVICE), `finish` (IN_SERVICE→COMPLETED), `noShow` (CONFIRMED→NO_SHOW) and `noShowReversed` (NO_SHOW→CONFIRMED). Records for transitions use the deterministic ID `{bookingId}_{TO}`; `reschedule`, `lateCancelRefused`, `noShow` and `noShowReversed` can repeat (or would collide with `confirm`), so they use auto IDs.
 No client can write or update. Written only inside the same transaction as the state change (a refused late attempt is written in its own transaction, together with the once-per-booking `lateCancels` increment, and the error is returned after it commits).
 
 ### deposits/{depositId}  (extension, FR-13)
@@ -157,7 +157,7 @@ The client generates a random `requestId` per booking attempt and reuses it on r
 
 Reschedule adds the new interval and removes the old one in the same transaction; if the new slot is taken, nothing changes.
 "Any available" tries eligible barbers in order of fewest bookings that day (tie-break: decisions A3).
-A scheduled function releases expired holds and offers every minute, but transactions also ignore expired holds, so correctness never depends on the scheduler running on time.
+A scheduled function releases expired holds (FR-09) and offers (FR-15) every minute, but transactions also ignore expired holds, so correctness never depends on the scheduler running on time.
 
 ## Other design decisions
 - **Half-open intervals** `[start, end)`: back-to-back bookings do not overlap.

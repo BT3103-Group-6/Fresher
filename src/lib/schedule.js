@@ -1,5 +1,5 @@
 // FR-08 / UI-B1: pure day-view logic (no Firebase imports, so node tests can load it).
-import { DAY_MS, sgTimeToMs } from './slots.js'
+import { DAY_MS, formatDate, formatTime, sgDateKey, sgTimeToMs } from './slots.js'
 
 const LIVE = ['PENDING_PAYMENT', 'CONFIRMED', 'IN_SERVICE', 'COMPLETED', 'NO_SHOW']
 export const STATUS_LABELS = {
@@ -97,6 +97,97 @@ export function toAppointment(id, data) {
     actualStart: data.actualStart ? data.actualStart.toMillis() : null,
     actualEnd: data.actualEnd ? data.actualEnd.toMillis() : null,
   }
+}
+
+// ---- FR-09 reminder status (decisions A4 addendum) ----
+export const REMINDER_TYPES = [
+  { type: 'confirmation', label: 'Confirmation' },
+  { type: 'reminder24h', label: '24 h reminder' },
+  { type: 'reminder2h', label: '2 h reminder' },
+]
+export const MAX_REMINDER_ATTEMPTS = 3 // the first try plus 2 retries; mirrors functions/sweep.js
+
+/** notifications doc (Timestamps) -> plain fields. Attempts are reduced to the ones for the current `rev`. */
+export function toReminderTask(id, data) {
+  const attempts = (data.attempts ?? [])
+    .filter((a) => a.rev === data.rev)
+    .map((a) => ({ at: a.at.toMillis(), outcome: a.outcome, error: a.error ?? null }))
+  return {
+    id,
+    bookingId: data.bookingId,
+    type: data.type,
+    status: data.status,
+    dueAt: data.dueAt.toMillis(),
+    nextAttemptAt: data.nextAttemptAt ? data.nextAttemptAt.toMillis() : null,
+    // When the reminders were last planned (the confirmation task carries it); older tasks only have createdAt.
+    plannedAt: (data.plannedAt ?? data.createdAt)?.toMillis() ?? null,
+    cancelReason: data.cancelReason ?? null,
+    attempts,
+  }
+}
+
+/** "10:00 AM" for today, "Mon, 7 Jan 10:00 AM" for another Singapore day. */
+function when(ms, now) {
+  return sgDateKey(ms) === sgDateKey(now) ? formatTime(ms) : `${formatDate(ms)} ${formatTime(ms)}`
+}
+
+const CANCEL_TEXT = {
+  booking_cancelled: 'Cancelled with the booking',
+  past_due: 'Not needed after the booking was moved',
+  stale: 'Cancelled: the booking changed',
+}
+
+const REMINDER_LEAD_MS = { reminder24h: 24 * 3600e3, reminder2h: 2 * 3600e3 }
+
+/**
+ * Why a booking has no task of this type. "Too close" only when we know when the reminders were planned
+ * (the confirmation task's `plannedAt`) and that moment was already past the reminder's due time
+ * (start - 24 h or start - 2 h), which is the server's skip rule. Anything else, such as a booking made
+ * before FR-09 (no tasks at all), is simply "not recorded"; it is never blamed on short notice.
+ */
+function missingReason(type, tasks, start) {
+  if (type === 'confirmation') return { state: 'missing', text: 'No confirmation recorded' }
+  const plannedAt = tasks.find((x) => x.type === 'confirmation')?.plannedAt
+  if (plannedAt != null && plannedAt > start - REMINDER_LEAD_MS[type]) {
+    return { state: 'not-scheduled', text: 'Not scheduled: booked too close to the start' }
+  }
+  return { state: 'missing', text: 'No reminder recorded' }
+}
+
+/**
+ * Reminder status for one appointment, from that appointment's tasks (any order) and its start (ms).
+ * Always three rows, so a missing reminder is visible: [{ type, label, state, text }]. `state` is one of
+ * sent, scheduled, retrying, failed, cancelled, not-scheduled (booked too close), missing (nothing
+ * recorded); `text` always says it in words (never colour alone).
+ */
+export function reminderSummary(tasks, now, start) {
+  return REMINDER_TYPES.map(({ type, label }) => {
+    const t = tasks.find((x) => x.type === type)
+    if (!t) return { type, label, ...missingReason(type, tasks, start) }
+    const failed = t.attempts.filter((a) => a.outcome === 'failed').length
+    if (t.status === 'sent') {
+      const sent = [...t.attempts].reverse().find((a) => a.outcome === 'sent')
+      return { type, label, state: 'sent', text: sent ? `Sent ${when(sent.at, now)}` : 'Sent' }
+    }
+    if (t.status === 'failed') {
+      return { type, label, state: 'failed', text: `Failed after ${t.attempts.length} attempts` }
+    }
+    if (t.status === 'cancelled') {
+      return { type, label, state: 'cancelled', text: CANCEL_TEXT[t.cancelReason] ?? 'Cancelled' }
+    }
+    if (failed > 0) {
+      const next = t.nextAttemptAt ? ` at ${when(t.nextAttemptAt, now)}` : ''
+      return { type, label, state: 'retrying', text: `Retrying${next}, attempt ${failed + 1} of ${MAX_REMINDER_ATTEMPTS}` }
+    }
+    return { type, label, state: 'scheduled', text: `Due ${when(t.dueAt, now)}` }
+  })
+}
+
+/** Groups tasks by booking ID. */
+export function tasksByBooking(tasks) {
+  const out = {}
+  for (const t of tasks) (out[t.bookingId] ??= []).push(t)
+  return out
 }
 
 /** Firestore block data -> plain ms fields. */

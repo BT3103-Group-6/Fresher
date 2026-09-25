@@ -3,6 +3,7 @@
 // Barbers see their own day; owners pick any barber in their shop. A HELD appointment whose hold has
 // passed is shown as expired, never as a live booking (limitation L2). Blocks are written by the
 // createBlock/removeBlock callables; they may overlap existing bookings, which are listed, never cancelled.
+// Each booking also shows its reminder status (FR-09), read from the notifications the scheduled job maintains.
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { Timestamp, collection, getDocs, onSnapshot, query, where } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
@@ -11,7 +12,7 @@ import { isOwner, session } from '@/stores/session'
 import { DAY_MS, formatDate, formatTime, sgDateKey, sgTimeToMs } from '@/lib/slots'
 import {
   STATUS_LABELS, availableActions, blockTimeToMs, dayBounds, displayStatus, isBooking, overlappingBlocks, partitionDay,
-  timeOptions, toAppointment, toBlock, validateBlockForm,
+  reminderSummary, tasksByBooking, timeOptions, toAppointment, toBlock, toReminderTask, validateBlockForm,
 } from '@/lib/schedule'
 
 const shopId = session.claims.shopId
@@ -31,6 +32,8 @@ const services = ref({})
 const dateKey = ref(sgDateKey(Date.now()))
 const appointments = ref([])
 const blocks = ref([])
+const reminderTasks = ref([])
+const reminderError = ref('')
 const loaded = reactive({ appointments: false, blocks: false, barbers: !ownerMode })
 const loadError = ref('')
 const showHidden = ref(false)
@@ -54,6 +57,8 @@ function subscribe() {
   loaded.blocks = false
   appointments.value = []
   blocks.value = []
+  reminderTasks.value = []
+  reminderError.value = ''
   if (!barberId.value) return
   const { start, end } = dayBounds(dateKey.value)
   const range = [where('start', '>=', Timestamp.fromMillis(start)), where('start', '<', Timestamp.fromMillis(end))]
@@ -69,6 +74,12 @@ function subscribe() {
       query(collection(db, `shops/${shopId}/blocks`), where('barberId', '==', barberId.value), ...range),
       (snap) => { blocks.value = snap.docs.map((d) => toBlock(d.id, d.data())).sort((a, b) => a.start - b.start); loaded.blocks = true },
       onError,
+    ),
+    // Reminder status is secondary: if it cannot load, the day still shows and rows say so.
+    onSnapshot(
+      query(collection(db, 'notifications'), where('shopId', '==', shopId), where('barberId', '==', barberId.value), where('apptStart', '>=', Timestamp.fromMillis(start)), where('apptStart', '<', Timestamp.fromMillis(end))),
+      (snap) => { reminderTasks.value = snap.docs.map((d) => toReminderTask(d.id, d.data())); reminderError.value = '' },
+      () => { reminderError.value = 'Reminder status could not be loaded.' },
     ),
   )
 }
@@ -116,6 +127,11 @@ const ready = computed(() => loaded.barbers && loaded.appointments && loaded.blo
 const range = (s, e) => `${formatTime(s)} to ${formatTime(e)}`
 const serviceName = (a) => services.value[a.serviceId] ?? 'Service'
 const flagged = (a) => overlappingBlocks(a, blocks.value)
+const remindersOf = computed(() => tasksByBooking(reminderTasks.value))
+const reminders = (a) => reminderSummary(remindersOf.value[a.id] ?? [], now.value, a.start)
+const showsReminders = (a) => ['CONFIRMED', 'IN_SERVICE', 'COMPLETED', 'NO_SHOW'].includes(displayStatus(a, now.value))
+const badgeOf = { sent: '', scheduled: 'off', retrying: 'warn', failed: 'warn', cancelled: 'off', 'not-scheduled': 'off', missing: 'off' }
+const stateLabel = { sent: 'Sent', scheduled: 'Scheduled', retrying: 'Retrying', failed: 'Failed', cancelled: 'Cancelled', 'not-scheduled': 'Not scheduled', missing: 'Not recorded' }
 
 // ---- Create block ----
 const times = timeOptions()
@@ -253,6 +269,10 @@ async function onAction(a, action) {
         </template>
       </p>
       <p v-if="removeError" class="banner" role="alert">{{ removeError }}</p>
+      <p class="hint">
+        Customer messages are sent by a <strong>mock</strong> provider in this prototype: reminders are logged, and no real SMS is sent.
+      </p>
+      <p v-if="reminderError" class="banner" role="alert">{{ reminderError }}</p>
 
       <ul class="timeline">
         <li v-for="item in timeline" :key="item.key"
@@ -282,6 +302,13 @@ async function onAction(a, action) {
               <template v-else>{{ item.apt.customerName ?? 'Customer' }} · {{ item.apt.customerPhoneMasked }}</template>
             </p>
             <p class="meta hint">{{ serviceName(item.apt) }} · {{ item.apt.durationMin }} min · {{ money(item.apt.priceCents) }}</p>
+            <ul v-if="showsReminders(item.apt) && !reminderError" class="reminders" :aria-label="`Reminders for the ${formatTime(item.apt.start)} booking`">
+              <li v-for="r in reminders(item.apt)" :key="r.type">
+                <span class="r-label">{{ r.label }}</span>
+                <span class="badge" :class="badgeOf[r.state]">{{ stateLabel[r.state] }}</span>
+                <span class="hint">{{ r.text }}</span>
+              </li>
+            </ul>
             <div v-if="availableActions(item.apt, now).length" class="row-actions">
               <template v-for="act in availableActions(item.apt, now)" :key="act.action">
                 <template v-if="armed === key(item.apt, act.action)">

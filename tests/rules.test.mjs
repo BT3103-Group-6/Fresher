@@ -45,7 +45,8 @@ beforeEach(async () => {
     await setDoc(doc(db, 'shops/a/blocks/k2'), { barberId: 'b2', start: DAY_START, end: DAY_END, reason: 'Private' })
     await setDoc(doc(db, 'shops/b/blocks/k3'), { barberId: 'b1', start: DAY_START, end: DAY_END })
     await setDoc(doc(db, 'auditLog/e1'), { shopId: 'a', bookingId: 'apt1' })
-    await setDoc(doc(db, 'notifications/n1'), { shopId: 'a', bookingId: 'apt1' })
+    await setDoc(doc(db, 'notifications/n1'), { shopId: 'a', barberId: 'b1', bookingId: 'apt1' })
+    await setDoc(doc(db, 'notifications/n2'), { shopId: 'a', barberId: 'b2', bookingId: 'apt2' })
     await setDoc(doc(db, 'customers/cust1'), { phoneE164: '+6591234567' })
   })
 })
@@ -165,8 +166,16 @@ describe('NFR-04 isolation', () => {
   it('scopes audit log and notifications to the shop', async () => {
     await assertSucceeds(getDoc(doc(owner('a'), 'auditLog/e1')))
     await assertFails(getDoc(doc(owner('b'), 'auditLog/e1')))
+    await assertSucceeds(getDoc(doc(owner('a'), 'notifications/n1')))
+    await assertFails(getDoc(doc(owner('b'), 'notifications/n1')))
     await assertSucceeds(getDoc(doc(barber('a'), 'notifications/n1')))
     await assertFails(getDoc(doc(customer('cust1'), 'notifications/n1')))
+  })
+  it('lets a barber read only reminder tasks for their own bookings (FR-09)', async () => {
+    await assertFails(getDoc(doc(barber('a'), 'notifications/n2')))
+    await assertSucceeds(getDocs(query(collection(barber('a'), 'notifications'), where('shopId', '==', 'a'), where('barberId', '==', 'b1'))))
+    await assertFails(getDocs(query(collection(barber('a'), 'notifications'), where('shopId', '==', 'a'))))
+    await assertSucceeds(getDocs(query(collection(owner('a'), 'notifications'), where('shopId', '==', 'a'))))
   })
   it('keeps a HELD appointment (no customer yet) unreadable to customers and anonymous users', async () => {
     await env.withSecurityRulesDisabled((ctx) =>

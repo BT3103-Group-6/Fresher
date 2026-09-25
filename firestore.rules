@@ -107,8 +107,11 @@ service cloud.firestore {
     match /auditLog/{eventId} {
       allow read: if isStaffOf(resource.data.shopId);
     }
+    // FR-09: the shop's owner, or the barber the booking belongs to (a barber's query must
+    // include barberId == own). Tasks hold no phone number.
     match /notifications/{taskId} {
-      allow read: if isStaffOf(resource.data.shopId);
+      allow read: if isOwnerOf(resource.data.shopId)
+        || isBarberOf(resource.data.shopId, resource.data.barberId);
     }
     match /deposits/{depositId} {
       allow read: if isStaffOf(resource.data.shopId);

@@ -9,8 +9,10 @@
     "preview": "vite preview",
     "seed": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 node scripts/seed.mjs",
     "backfill:stats": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node scripts/backfill-stats.mjs",
+    "backfill:notifications": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node scripts/backfill-notifications.mjs",
+    "sweep": "node scripts/sweep.mjs",
     "seed:fr12": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node scripts/seed-fr12.mjs",
-    "test:rules": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node --test tests/rules.test.mjs tests/slots.test.mjs tests/booking.unit.test.mjs tests/discovery.test.mjs tests/geocode.unit.test.mjs tests/blocks.unit.test.mjs tests/schedule.test.mjs tests/service.unit.test.mjs tests/history.test.mjs tests/stats.unit.test.mjs tests/stats.trigger.test.mjs tests/dashboard.test.mjs",
+    "test:rules": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node --test tests/rules.test.mjs tests/slots.test.mjs tests/booking.unit.test.mjs tests/discovery.test.mjs tests/geocode.unit.test.mjs tests/blocks.unit.test.mjs tests/schedule.test.mjs tests/service.unit.test.mjs tests/history.test.mjs tests/stats.unit.test.mjs tests/stats.trigger.test.mjs tests/dashboard.test.mjs tests/notifications.unit.test.mjs tests/notifications.emulator.test.mjs",
     "test:concurrency": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 node --test tests/concurrency.test.mjs"
   },
   "dependencies": {

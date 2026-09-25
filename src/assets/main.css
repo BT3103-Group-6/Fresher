@@ -140,6 +140,9 @@ a.btn { color: #fff; }
 .timeline li.held { border-left-style: dashed; border-left-color: var(--teal); }
 .timeline li.confirmed { border-left-color: var(--teal); }
 .timeline li.gone { opacity: 0.75; border-left-color: var(--line); }
+.timeline .reminders { list-style: none; padding: 0; margin: 0.25rem 0 0.5rem; }
+.timeline .reminders li { border: 0; border-radius: 0; padding: 0.1rem 0; margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.5rem; }
+.timeline .reminders .r-label { min-width: 6.5rem; font-size: 0.85rem; }
 .timeline .when { font-weight: 700; margin: 0; }
 .timeline .meta { margin: 0.15rem 0 0; }
 .badge.warn { background: #fdecc8; color: #6b4200; }
