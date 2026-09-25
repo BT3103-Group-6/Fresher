@@ -101,7 +101,7 @@ async function onMockPay(outcome) {
     // The result arrives through the live listeners; nothing to do here.
   } catch (err) {
     if (err.code === 'functions/not-found' || err.code === 'functions/unavailable') {
-      error.value = 'The mock checkout is only available while running against the Firebase emulators.'
+      error.value = 'The mock checkout is only available in the emulators and in demo mode.'
     } else if (err.details?.reason === 'NOT_PAYABLE') {
       error.value = 'This payment can no longer be made.'
     } else {
@@ -184,7 +184,7 @@ async function onMockPay(outcome) {
         <template v-if="canPay(state)">
           <div class="pay">
             <h3 id="pay-h">Mock checkout</h3>
-            <p class="hint">Choose what the mock provider should do. Only the emulator can complete a mock payment.</p>
+            <p class="hint">Choose what the mock provider should do. No real money moves; the mock checkout works only in the emulators and in demo mode.</p>
             <div class="actions" role="group" aria-labelledby="pay-h">
               <button class="btn" type="button" :disabled="!!busy || !online" @click="onMockPay('success')">
                 {{ busy === 'success' ? 'Paying…' : `Pay ${money(info.amountCents)} (mock)` }}

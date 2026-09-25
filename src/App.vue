@@ -2,6 +2,7 @@
 import { computed, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
 import CustomerHeader from '@/components/CustomerHeader.vue'
+import DemoBanner from '@/components/DemoBanner.vue'
 import StaffHeader from '@/components/StaffHeader.vue'
 import { isStaff } from '@/stores/session'
 
@@ -19,6 +20,7 @@ watchEffect(() => document.getElementById('app')?.classList.toggle('narrow', NAR
 </script>
 
 <template>
+  <DemoBanner />
   <StaffHeader v-if="showStaffHeader" />
   <CustomerHeader v-else-if="showCustomerHeader" />
   <RouterView />

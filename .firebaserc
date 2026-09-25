@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "fresher-6d857"
+    "default": "fresher-6d857",
+    "prod": "fresher-6d857"
   }
 }

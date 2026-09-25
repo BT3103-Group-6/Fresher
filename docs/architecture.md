@@ -12,6 +12,7 @@ Source: BT3103 Midterm Report, Section 6. Requirement IDs refer to `docs/require
   - `src/firebase.js` connects to emulators when `import.meta.env.DEV` is true.
 - Secrets (OneMap token, messaging and payment keys) live in Cloud Functions secrets (`defineSecret`), never in the Vue bundle.
 - In the prototype, messaging (SMS/WhatsApp) and payment providers are **mocked** behind a small interface, and the UI/report must say so.
+- **Public demo deployment (A17, `docs/deployment.md`):** project `fresher-6d857` (alias `prod`), real web config from `.env.local`, App Check (reCAPTCHA Enterprise) on the web app and on every callable outside the emulator, and a **demo mode** flag (`DEMO_MODE` for functions, `VITE_DEMO_MODE` for the web build; off by default) that keeps `mockPay` and the postal-code stub available and labels the UI. Function settings that are not secrets (`DEMO_MODE`, `APP_BASE_URL`) live in `functions/.env.prod`; secrets (`PAYMENT_WEBHOOK_SECRET`) in Secret Manager; `ONEMAP_TOKEN` is unset.
 
 ## Trust zones
 1. **Browser (untrusted):** renders screens, reads public or permitted data, sends commands.
@@ -145,7 +146,9 @@ Terminal: `COMPLETED, CANCELLED, EXPIRED`. `NO_SHOW` can be reversed to `CONFIRM
 | NO_SHOW | CONFIRMED | Staff: `reverseNoShow` | within 24 h of `noShowAt`; decrements `noShowCount` |
 
 ## Callable functions (all in asia-southeast1)
-`geocode, holdSlot, confirmBooking, releaseHold, cancelBooking, reschedule, markNoShow, reverseNoShow, startService, finishService, createBlock, addBarber (sets claims), createDeposit, mockPay (mock checkout; emulator only, deposit owner only), paymentWebhook (HTTPS, signed, not a callable), joinWaitlist, claimOffer, addWalkIn, startWalkIn, finishWalkIn, removeWalkIn, verifyShop (admin)`
+`geocode, holdSlot, confirmBooking, releaseHold, cancelBooking, reschedule, markNoShow, reverseNoShow, startService, finishService, createBlock, addBarber (sets claims), createDeposit, mockPay (mock checkout; emulator and demo mode only, deposit owner only), paymentWebhook (HTTPS, signed, not a callable), joinWaitlist, claimOffer, addWalkIn, startWalkIn, finishWalkIn, removeWalkIn, verifyShop (admin)`
+
+All callables set `enforceAppCheck` except in the Functions emulator (A17); `paymentWebhook` is signed HTTPS and is exempt.
 
 Every state-changing function: check auth and role → load current state in a transaction → check the transition and guard from the table above → write new state **and** an `auditLog` record in the same transaction.
 

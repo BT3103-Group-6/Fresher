@@ -12,6 +12,11 @@ setGlobalOptions({region: "asia-southeast1", maxInstances: 10});
 
 initializeApp();
 
+// Demo mode and App Check (decisions A17): every callable enforces App Check
+// outside the emulator; the mock checkout and the postal stub need demo mode.
+const demo = require("./demo");
+const APP_CHECK = demo.appCheck();
+
 const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -49,7 +54,7 @@ function checkWorkingHours(hours) {
 // FR-07: owner adds a barber. Creates the login, sets claims
 // { shopId, role: "barber", barberId }, and writes the barber and member docs.
 // The shop comes from the caller's token, never from the input.
-exports.addBarber = onCall(async (request) => {
+exports.addBarber = onCall(APP_CHECK, async (request) => {
   const token = request.auth && request.auth.token;
   if (!token) throw new HttpsError("unauthenticated", "Sign in first.");
   if (token.role !== "owner" || !token.shopId) {
@@ -124,24 +129,33 @@ exports.addBarber = onCall(async (request) => {
 // FR-02/FR-03: customer booking. holdSlot and releaseHold are unauthenticated
 // (the OTP comes after the hold); confirmBooking needs Phone Auth.
 const booking = require("./booking");
-exports.holdSlot = onCall((request) => booking.holdSlot(request.data || {}));
-exports.confirmBooking = onCall((request) => booking.confirmBooking(request));
+exports.holdSlot =
+  onCall(APP_CHECK, (request) => booking.holdSlot(request.data || {}));
+exports.confirmBooking =
+  onCall(APP_CHECK, (request) => booking.confirmBooking(request));
 exports.releaseHold =
-  onCall((request) => booking.releaseHold(request.data || {}));
+  onCall(APP_CHECK, (request) => booking.releaseHold(request.data || {}));
 
 // FR-04/FR-05: cancellation and rescheduling. Customers need a fresh OTP;
 // cancelBooking also accepts staff tokens (never late).
-exports.cancelBooking = onCall((request) => booking.cancelBooking(request));
-exports.reschedule = onCall((request) => booking.reschedule(request));
+exports.cancelBooking =
+  onCall(APP_CHECK, (request) => booking.cancelBooking(request));
+exports.reschedule =
+  onCall(APP_CHECK, (request) => booking.reschedule(request));
 
 // FR-01: shop discovery. geocode is unauthenticated (discovery comes before
 // sign-in); the OneMap token is a secret and never leaves the function. With
 // no token it uses a small mock lookup in the emulator only (decisions A11,
 // L12); elsewhere it returns "unavailable".
+// In demo mode the token is not bound at all (an unset secret would stop the
+// deploy) and the stub answers (A17, L12).
 const onemapToken = defineSecret("ONEMAP_TOKEN");
 const geocoder = require("./geocode");
-exports.geocode = onCall({secrets: [onemapToken]}, (request) =>
-  geocoder.geocode(request.data, onemapToken.value()));
+exports.geocode = onCall(
+    {...APP_CHECK, secrets: demo.demoMode() ? [] : [onemapToken]},
+    (request) => geocoder.geocode(request.data,
+        demo.demoMode() ? "" : onemapToken.value(), fetch,
+        demo.mocksAllowed()));
 
 // FR-01: keep the trigger-owned shop summary (priceMin, priceMax, serviceTypes,
 // minDurationMin) in step with the shop's services. Security Rules stop
@@ -161,14 +175,20 @@ exports.summarizeShopServices = onDocumentWritten(
 // FR-08: personal time blocks (staff only; decisions A12). Existing bookings
 // are never cancelled; createBlock returns them as conflicts.
 const blocks = require("./blocks");
-exports.createBlock = onCall((request) => blocks.createBlock(request));
-exports.removeBlock = onCall((request) => blocks.removeBlock(request));
+exports.createBlock =
+  onCall(APP_CHECK, (request) => blocks.createBlock(request));
+exports.removeBlock =
+  onCall(APP_CHECK, (request) => blocks.removeBlock(request));
 
 const service = require("./service");
-exports.startService = onCall((request) => service.startService(request));
-exports.finishService = onCall((request) => service.finishService(request));
-exports.markNoShow = onCall((request) => service.markNoShow(request));
-exports.reverseNoShow = onCall((request) => service.reverseNoShow(request));
+exports.startService =
+  onCall(APP_CHECK, (request) => service.startService(request));
+exports.finishService =
+  onCall(APP_CHECK, (request) => service.finishService(request));
+exports.markNoShow =
+  onCall(APP_CHECK, (request) => service.markNoShow(request));
+exports.reverseNoShow =
+  onCall(APP_CHECK, (request) => service.reverseNoShow(request));
 
 // FR-14: keep shops/{shopId}/dailyStats current (idempotent; decisions A7).
 const stats = require("./stats");
@@ -187,10 +207,13 @@ exports.processNotifications = onSchedule(
 // FR-10: walk-in queue. The delay recalculation also runs inside startService
 // and finishService and in the sweep above (decisions A5 addendum).
 const queue = require("./queue");
-exports.addWalkIn = onCall((request) => queue.addWalkIn(request));
-exports.startWalkIn = onCall((request) => queue.startWalkIn(request));
-exports.finishWalkIn = onCall((request) => queue.finishWalkIn(request));
-exports.removeWalkIn = onCall((request) => queue.removeWalkIn(request));
+exports.addWalkIn = onCall(APP_CHECK, (request) => queue.addWalkIn(request));
+exports.startWalkIn =
+  onCall(APP_CHECK, (request) => queue.startWalkIn(request));
+exports.finishWalkIn =
+  onCall(APP_CHECK, (request) => queue.finishWalkIn(request));
+exports.removeWalkIn =
+  onCall(APP_CHECK, (request) => queue.removeWalkIn(request));
 
 // Dev only: the emulator does not fire schedules, so this runs one sweep on
 // demand (`npm run sweep`). It is not exported outside the Functions emulator,
@@ -211,7 +234,7 @@ if (process.env.FUNCTIONS_EMULATOR === "true") {
 // back to a fixed mock value in the Functions emulator only (L24).
 const payments = require("./payments");
 const paymentSecret = defineSecret("PAYMENT_WEBHOOK_SECRET");
-exports.createDeposit = onCall((request) =>
+exports.createDeposit = onCall(APP_CHECK, (request) =>
   payments.createDeposit(request, getFirestore(), payments.mockProvider()));
 exports.paymentWebhook = onRequest({secrets: [paymentSecret]},
     async (req, res) => {
@@ -223,13 +246,14 @@ exports.paymentWebhook = onRequest({secrets: [paymentSecret]},
       res.status(out.status).json(out.body);
     });
 
-// Dev only, like devRunSweep: the mock checkout's pay and fail buttons. Not
-// exported outside the Functions emulator, so a deployment has no way to
+// The mock checkout's pay and fail buttons. Exported only in the Functions
+// emulator and when demo mode is on (A17), so a normal deployment has no way to
 // complete a mock payment (L23). The caller must own the deposit.
-if (process.env.FUNCTIONS_EMULATOR === "true") {
-  exports.mockPay = onCall({secrets: [paymentSecret]}, (request) =>
-    payments.mockPay(request, getFirestore(), payments.mockProvider(),
-        payments.resolveSecret(paymentSecret.value())));
+if (demo.mocksAllowed()) {
+  exports.mockPay = onCall(
+      {...APP_CHECK, secrets: [paymentSecret]}, (request) =>
+        payments.mockPay(request, getFirestore(), payments.mockProvider(),
+            payments.resolveSecret(paymentSecret.value())));
 }
 
 // FR-15: the waitlist (decisions A6 addendum). joinWaitlist and claimOffer are
@@ -238,9 +262,9 @@ if (process.env.FUNCTIONS_EMULATOR === "true") {
 // the earliest compatible waiting entry. The sweep expires lapsed offers and
 // entries past their date.
 const waitlist = require("./waitlist");
-exports.joinWaitlist = onCall((request) =>
+exports.joinWaitlist = onCall(APP_CHECK, (request) =>
   waitlist.joinWaitlist(request, getFirestore()));
-exports.claimOffer = onCall((request) =>
+exports.claimOffer = onCall(APP_CHECK, (request) =>
   waitlist.claimOffer(request, getFirestore()));
 exports.offerFreedTime = onDocumentWritten(
     "shops/{shopId}/schedules/{scheduleId}",

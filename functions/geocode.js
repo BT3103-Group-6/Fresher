@@ -1,7 +1,8 @@
 // FR-01: postal code -> coordinates. The OneMap token stays in this file's
 // caller (a Functions secret) and is never returned. Without a token a small
-// mock lookup is used in the emulator only; elsewhere the call is unavailable
-// (decisions A11, L12).
+// mock lookup is used where mocks are allowed (the emulator, or demo mode in
+// the public demo deployment); elsewhere the call is unavailable (decisions
+// A11, A17, L12).
 const {HttpsError} = require("firebase-functions/https");
 
 const POSTAL = /^\d{6}$/;
@@ -59,11 +60,12 @@ const notFound = () => new HttpsError("not-found",
 
 /**
  * Looks up a postal code. Uses OneMap when a token is set. With no token the
- * mock table is used in the emulator only; otherwise the lookup is unavailable.
+ * mock table is used only where mocks are allowed; otherwise the lookup is
+ * unavailable.
  * @param {*} data Callable request data.
  * @param {string} token OneMap token; empty means "no token".
  * @param {Function} fetchFn fetch implementation (injected for tests).
- * @param {boolean} emulator Whether running in the Functions emulator.
+ * @param {boolean} emulator Whether mocks are allowed (emulator or demo mode).
  * @return {Promise<{lat: number, lng: number, label: string}>} Location.
  */
 async function geocode(data, token, fetchFn = fetch,

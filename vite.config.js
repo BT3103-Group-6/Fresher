@@ -1,11 +1,24 @@
 import { fileURLToPath, URL } from 'node:url'
 
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ command, mode }) => {
+  // A17: a production build must carry the real web config and the App Check site key, never placeholders.
+  if (command === 'build') {
+    const env = loadEnv(mode, process.cwd(), 'VITE_')
+    const bad = ['VITE_FIREBASE_API_KEY', 'VITE_FIREBASE_AUTH_DOMAIN', 'VITE_FIREBASE_PROJECT_ID', 'VITE_FIREBASE_APP_ID', 'VITE_APP_CHECK_SITE_KEY']
+      .filter((k) => !env[k] || env[k].startsWith('demo-'))
+    if (bad.length) {
+      throw new Error(`Refusing to build: set real values for ${bad.join(', ')} in .env.local (see docs/deployment.md).`)
+    }
+  }
+  return config
+})
+
+const config = {
   plugins: [
     vue(),
     vueDevTools(),
@@ -32,4 +45,4 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
-})
+}

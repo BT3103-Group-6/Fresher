@@ -1,5 +1,6 @@
 // Loads fictional shops, barbers, services and staff accounts into the Firebase EMULATORS.
 // Usage: start the emulators, then `npm run seed`. Safe to rerun (fixed IDs, upserts).
+// Live mode (`npm run seed:live -- --confirm-live=<project id>`) is for the public demo project only (A17).
 import { initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
 import { getFirestore } from 'firebase-admin/firestore'
@@ -9,15 +10,48 @@ import { geohashForLocation } from 'geofire-common'
 // Same summary the services trigger computes, so seeded shops look identical with or without the Functions emulator.
 const { summarizeServices } = createRequire(import.meta.url)('../functions/discovery.js')
 
-if (!process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_AUTH_EMULATOR_HOST) {
-  console.error(
-    'Refusing to seed: set FIRESTORE_EMULATOR_HOST and FIREBASE_AUTH_EMULATOR_HOST ' +
-      '(e.g. via `npm run seed`) so this can never touch production.',
-  )
+const PROJECT_ID = 'fresher-6d857'
+const args = process.argv.slice(2)
+const live = args.includes('--live')
+const overwrite = args.includes('--overwrite')
+const emulatorVars = ['FIRESTORE_EMULATOR_HOST', 'FIREBASE_AUTH_EMULATOR_HOST']
+const die = (message) => {
+  console.error(message)
   process.exit(1)
 }
 
-const app = initializeApp({ projectId: 'fresher-6d857' })
+let staffPassword = 'password123'
+if (live) {
+  // A17 live mode: writes to the REAL project. Runs only with --confirm-live=<project id>, never with emulator
+  // variables set, and never with a default password. `npm run seed:live` on its own therefore refuses.
+  const known = ['--live', '--overwrite']
+  const unknown = args.filter((a) => !known.includes(a) && !a.startsWith('--confirm-live='))
+  if (unknown.length) die(`Refusing to seed: unknown option ${unknown.join(' ')}.`)
+  if (emulatorVars.some((v) => process.env[v])) {
+    die('Refusing to seed live: emulator variables are set (' + emulatorVars.join(', ') + '). Unset them.')
+  }
+  const confirm = args.find((a) => a.startsWith('--confirm-live='))?.slice('--confirm-live='.length)
+  if (confirm !== PROJECT_ID) {
+    die(
+      `Refusing to seed the LIVE project. To write sample data to ${PROJECT_ID}, run:\n` +
+        `  SEED_STAFF_PASSWORD='<12+ characters>' npm run seed:live -- --confirm-live=${PROJECT_ID}\n` +
+        'Needs Application Default Credentials (gcloud auth application-default login). ' +
+        'Add --overwrite to replace sample shops that already exist.',
+    )
+  }
+  staffPassword = process.env.SEED_STAFF_PASSWORD ?? ''
+  if (staffPassword.length < 12) die('Refusing to seed live: set SEED_STAFF_PASSWORD to at least 12 characters.')
+} else {
+  if (args.length) die(`Refusing to seed: unknown option ${args.join(' ')}. Live seeding is \`npm run seed:live\` (see docs/deployment.md).`)
+  if (!emulatorVars.every((v) => process.env[v])) {
+    die(
+      'Refusing to seed: set FIRESTORE_EMULATOR_HOST and FIREBASE_AUTH_EMULATOR_HOST ' +
+        '(e.g. via `npm run seed`) so this can never touch production.',
+    )
+  }
+}
+
+const app = initializeApp({ projectId: PROJECT_ID })
 const db = getFirestore(app)
 const auth = getAuth(app)
 
@@ -101,7 +135,6 @@ const shops = [
   },
 ]
 
-const staffPassword = 'password123'
 const staffAccounts = []
 
 async function upsertUser(uid, email, claims) {
@@ -115,6 +148,13 @@ async function upsertUser(uid, email, claims) {
   await auth.setCustomUserClaims(uid, claims)
   staffAccounts.push([email, JSON.stringify(claims)])
 }
+
+if (live && !overwrite) {
+  const existing = []
+  for (const { id } of shops) if ((await db.doc(`shops/${id}`).get()).exists) existing.push(id)
+  if (existing.length) die(`Refusing to seed live: ${existing.join(', ')} already exist. Add --overwrite to replace them.`)
+}
+if (live) console.log(`Seeding LIVE project ${PROJECT_ID}${overwrite ? ' (overwriting existing sample shops)' : ''}...`)
 
 for (const shop of shops) {
   const { id, services, barbers, open, ...profile } = shop
@@ -159,5 +199,5 @@ for (const shop of shops) {
 await upsertUser('platform-admin', 'admin@fresher.example.com', { admin: true })
 
 console.log(`Seeded ${shops.length} shops (fictional data).`)
-console.log(`Staff logins (password for all: ${staffPassword}):`)
+console.log(live ? 'Staff logins (password: the SEED_STAFF_PASSWORD you gave):' : `Staff logins (password for all: ${staffPassword}):`)
 for (const [email, claims] of staffAccounts) console.log(`  ${email}  ${claims}`)
