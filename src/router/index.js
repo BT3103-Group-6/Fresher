@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { authReady, isOwner, session } from '@/stores/session'
+import { authReady, isBarber, isOwner, isStaff, landingRoute, session } from '@/stores/session'
 import { draft } from '@/stores/booking'
 
 const router = createRouter({
@@ -18,6 +18,13 @@ const router = createRouter({
     },
     // Customer bookings (FR-04, FR-05). The view runs its own fresh-OTP step; the server re-checks it.
     { path: '/my-bookings', name: 'my-bookings', component: () => import('@/views/customer/MyBookingsView.vue') },
+    // Barber schedule (FR-08): barbers see their own day, owners pick any barber in their shop.
+    {
+      path: '/staff/schedule',
+      name: 'schedule',
+      component: () => import('@/views/staff/ScheduleView.vue'),
+      meta: { requiresStaff: true },
+    },
     { path: '/login', name: 'login', component: () => import('@/views/staff/SignInView.vue') },
     {
       path: '/staff/config',
@@ -30,12 +37,14 @@ const router = createRouter({
 
 router.beforeEach(async (to) => {
   await authReady
-  if (to.meta.requiresOwner) {
+  if (to.meta.requiresOwner || to.meta.requiresStaff) {
     if (!session.user) return { name: 'login', query: { redirect: to.fullPath } }
-    // Signed in but not an owner (barber, admin, customer): sent to sign-in with a reason.
-    if (!isOwner()) return { name: 'login', query: { denied: '1' } }
+    // A barber opening an owner-only page lands on their schedule instead of a dead end.
+    if (to.meta.requiresOwner && !isOwner() && isBarber()) return { name: 'schedule' }
+    // Signed in but not staff (customer, admin): sent to sign-in with a reason.
+    if (!isStaff()) return { name: 'login', query: { denied: '1' } }
   }
-  if (to.name === 'login' && isOwner() && !to.query.denied) return { name: 'shop-config' }
+  if (to.name === 'login' && isStaff() && !to.query.denied) return landingRoute()
 })
 
 export default router

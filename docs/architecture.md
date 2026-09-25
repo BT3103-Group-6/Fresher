@@ -37,7 +37,7 @@ How each requirement is delivered: the screen it appears on, and the logic behin
 | FR-05 | Cancellation window | UI-C3 (policy shown), UI-C4 | `cancelBooking` compares start − now with shop `noticeMins`; late attempts are blocked or flagged per `latePolicy` and counted in `shopStats.lateCancels`. |
 | FR-06 | Service configuration | UI-O1 Shop configuration | Owner saves to `services`; rules check name, 5-minute duration and price. Customers' listeners update within seconds. Appointments keep a price/duration snapshot. |
 | FR-07 | Multiple barbers | UI-O1, UI-C2 | `addBarber` creates the barber and sets claims. "Any available" tries eligible barbers by fewest bookings that day; the schedule lock prevents overlaps. Deactivation hides the barber from new bookings only. |
-| FR-08 | Personal time blocks | UI-B1 Barber schedule | `createBlock` adds a block interval to the schedule doc and returns any conflicting confirmed bookings instead of cancelling them. |
+| FR-08 | Personal time blocks | UI-B1 Barber schedule | `createBlock` adds a block interval to the schedule doc (and a `blocks` doc) in one transaction and returns any overlapping bookings and live holds instead of cancelling them; `removeBlock` undoes it. Barbers block only their own time, owners any barber in their shop; blocks are single-day and may not overlap another block (decisions A12). UI-B1 (`/staff/schedule`) shows the day and treats an expired HELD appointment as expired (L2). |
 | FR-09 | Automated reminders | UI-B1 (delivery status) | On confirmation, a trigger creates `notifications` tasks for 24 h and 2 h; a scheduled function sends due tasks via the mock provider and logs each attempt. Cancel deletes tasks; reschedule recreates them. |
 | FR-10 | Queue reconciliation | UI-B2 Queue management | Staff start/finish actions record `actualStart`/`actualEnd`; projected delay is computed from them and queued walk-ins; delay > 10 min triggers a customer warning. |
 | FR-11 | Booking history and rebooking | UI-C4 My bookings | After OTP, Vue queries `appointments` by `customerId`. Rebook pre-fills shop, barber and service if still active, then uses the normal booking flow. |
@@ -84,10 +84,11 @@ Trigger-owned summary (FR-01, decisions A11): `priceMin, priceMax` (cents), `ser
 
 ### .../schedules/{barberId_yyyymmdd}  — concurrency lock document
 `barberId, date, intervals[]: { start, end, kind ("booking" | "hold" | "block"), refId?, holdExpiresAt? }, version`
-`refId` (the appointment ID) is set on `booking` intervals only. Hold intervals carry no `refId`: schedules are public and the appointment ID of a hold is the `requestId`, which acts as the capability for `confirmBooking`/`releaseHold`.
+`refId` is set on `booking` intervals (the appointment ID) and `block` intervals (the `blockId`, so removal is exact; the reason stays in the staff-only `blocks` doc). Hold intervals carry no `refId`: schedules are public and the appointment ID of a hold is the `requestId`, which acts as the capability for `confirmBooking`/`releaseHold`.
 
 ### .../blocks/{blockId}
-`barberId, start, end, reason`
+`barberId, start, end, reason, createdBy, createdAt`
+Written only by `createBlock`/`removeBlock`. Read by the owner, or by the barber it belongs to (a barber's query must include `barberId == own`). No `auditLog` (decisions A12).
 
 ### .../dailyStats/{yyyymmdd}
 Per barber: `completed, valueCents, noShows, bookedMin, openMin`

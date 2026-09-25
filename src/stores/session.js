@@ -20,6 +20,10 @@ export const authReady = new Promise((resolve) => {
 })
 
 export const isOwner = () => session.claims.role === 'owner' && !!session.claims.shopId
+export const isBarber = () => session.claims.role === 'barber' && !!session.claims.shopId && !!session.claims.barberId
+export const isStaff = () => isOwner() || isBarber()
+// Where staff land after sign-in (decisions A12): owners configure, barbers see their day.
+export const landingRoute = () => (isOwner() ? { name: 'shop-config' } : { name: 'schedule' })
 
 export async function signIn(email, password) {
   const { user } = await signInWithEmailAndPassword(auth, email, password)

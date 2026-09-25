@@ -156,3 +156,9 @@ exports.summarizeShopServices = onDocumentWritten(
       await shopRef.update(
           discovery.summarizeServices(services.docs.map((d) => d.data())));
     });
+
+// FR-08: personal time blocks (staff only; decisions A12). Existing bookings
+// are never cancelled; createBlock returns them as conflicts.
+const blocks = require("./blocks");
+exports.createBlock = onCall((request) => blocks.createBlock(request));
+exports.removeBlock = onCall((request) => blocks.removeBlock(request));

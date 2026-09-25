@@ -76,8 +76,10 @@ service cloud.firestore {
         allow read: if isStaffOf(shopId) || shopIsVerified(shopId);
       }
 
+      // Written only by createBlock/removeBlock. A block's reason can be private, so a barber reads only
+      // their own (the query must include barberId == their own); the owner reads all (FR-08).
       match /blocks/{blockId} {
-        allow read: if isStaffOf(shopId);
+        allow read: if isOwnerOf(shopId) || isBarberOf(shopId, resource.data.barberId);
       }
       match /dailyStats/{day} {
         allow read: if isStaffOf(shopId);

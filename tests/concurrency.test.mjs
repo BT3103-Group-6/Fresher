@@ -655,3 +655,245 @@ describe('FR-05 cancelBooking', () => {
     assert.equal((await intervalsOf(shopId, 'b1', slot(10))).length, 1)
   })
 })
+
+// FR-08: personal time blocks (decisions A12). A block is written on the same barber-day schedule doc that
+// holdSlot locks, so a block and a hold for the same time serialise: whichever commits second either
+// sees the other (hold -> SLOT_TAKEN) or reports it (block -> conflict). Nothing is ever cancelled.
+describe('FR-08 personal time blocks', () => {
+  const block = (token, extra = {}) =>
+    call('createBlock', { blockId: randomUUID(), start: slot(10), end: slot(11), ...extra }, token)
+  const unblock = (token, blockId) => call('removeBlock', { blockId }, token)
+  const blockDocs = async (shopId) => (await db.collection(`shops/${shopId}/blocks`).get()).docs
+  const kind = (intervals, k) => intervals.filter((iv) => iv.kind === k)
+  const overlapsWindow = (iv, s, e) => iv.start.toMillis() < e && s < iv.end.toMillis()
+
+  it('a block racing simultaneous holds: every hold either wins before the block and is reported, or loses with SLOT_TAKEN', async () => {
+    const shopId = await makeShop(['b1', 'b2', 'b3'])
+    const owner = await staffToken({ shopId, role: 'owner' })
+    const [from, to] = [slot(10), slot(11)]
+    const offsets = [-30, -15, 0, 0, 15, 15, 30, 30, 60] // minutes from 10:00; -30 and 60 do not overlap the block
+    for (const barberId of ['b1', 'b2', 'b3']) {
+      const calls = offsets.map((o) => hold(shopId, barberId, from + o * MIN))
+      const [blockRes, ...holds] = await Promise.all([block(owner, { barberId }), ...calls])
+      assert.equal(blockRes.ok, true, `createBlock failed: ${blockRes.reason ?? blockRes.status}`)
+
+      const intervals = await intervalsOf(shopId, barberId, from)
+      assert.equal(kind(intervals, 'block').length, 1, 'exactly one block interval')
+      assert.equal(kind(intervals, 'block')[0].refId, blockRes.data.blockId)
+
+      const winners = holds.map((h, i) => ({ h, start: from + offsets[i] * MIN })).filter((x) => x.h.ok)
+      const overlapping = winners.filter((w) => w.start < to && from < w.start + 30 * MIN)
+      const reported = blockRes.data.conflicts
+      assert.ok(reported.every((c) => c.kind === 'hold'))
+      assert.equal(reported.length, overlapping.length, 'every hold that beat the block is reported, and only those')
+      assert.deepEqual(reported.map((c) => c.start).sort(), overlapping.map((w) => w.start).sort())
+      // Holds that lost did so cleanly, and holds outside the block are unaffected by it.
+      for (const [i, h] of holds.entries()) {
+        if (h.ok) continue
+        assert.equal(h.reason, 'SLOT_TAKEN', `hold at ${offsets[i]} min failed for a reason other than SLOT_TAKEN`)
+      }
+      // The final schedule has no double booking among holds either.
+      const holdIntervals = kind(intervals, 'hold')
+      for (const [i, a] of holdIntervals.entries()) {
+        for (const b of holdIntervals.slice(i + 1)) assert.equal(overlapsWindow(a, b.start.toMillis(), b.end.toMillis()), false)
+      }
+      assert.equal(holdIntervals.filter((iv) => overlapsWindow(iv, from, to)).length, overlapping.length)
+      assert.equal(await count('appointments', shopId) >= winners.length, true)
+    }
+    assert.equal((await blockDocs(shopId)).length, 3)
+  })
+
+  it('20 simultaneous createBlock calls with one blockId leave one block, and all report the same block', async () => {
+    const shopId = await makeShop(['b1'])
+    const owner = await staffToken({ shopId, role: 'owner' })
+    const blockId = randomUUID()
+    const results = await Promise.all(Array.from({ length: 20 }, () => block(owner, { blockId, barberId: 'b1' })))
+    assert.ok(results.every((r) => r.ok), JSON.stringify(results.find((r) => !r.ok)))
+    assert.equal(new Set(results.map((r) => JSON.stringify(r.data))).size, 1)
+    assert.equal((await blockDocs(shopId)).length, 1)
+    assert.equal(kind(await intervalsOf(shopId, 'b1', slot(10)), 'block').length, 1)
+  })
+
+  it('rejects a reused blockId with different parameters, changing nothing', async () => {
+    const shopId = await makeShop(['b1'])
+    const owner = await staffToken({ shopId, role: 'owner' })
+    const blockId = randomUUID()
+    assert.equal((await block(owner, { blockId, barberId: 'b1' })).ok, true)
+    const r = await block(owner, { blockId, barberId: 'b1', end: slot(12) })
+    assert.equal(r.status, 'INVALID_ARGUMENT')
+    const [doc] = await blockDocs(shopId)
+    assert.equal(doc.data().end.toMillis(), slot(11))
+  })
+
+  it('two simultaneous overlapping blocks: exactly one wins, the other gets BLOCK_OVERLAP; adjacent blocks are fine', async () => {
+    const shopId = await makeShop(['b1'])
+    const owner = await staffToken({ shopId, role: 'owner' })
+    const rs = await Promise.all([
+      block(owner, { barberId: 'b1', start: slot(10), end: slot(11) }),
+      block(owner, { barberId: 'b1', start: slot(10, 30), end: slot(11, 30) }),
+      block(owner, { barberId: 'b1', start: slot(10, 45), end: slot(12) }),
+    ])
+    assert.equal(rs.filter((r) => r.ok).length, 1)
+    for (const r of rs.filter((x) => !x.ok)) assert.equal(r.reason, 'BLOCK_OVERLAP')
+    assert.equal((await blockDocs(shopId)).length, 1)
+    assert.equal(kind(await intervalsOf(shopId, 'b1', slot(10)), 'block').length, 1)
+    // Back-to-back with the winner (half-open) is allowed.
+    const winner = (await blockDocs(shopId))[0].data()
+    const after = await block(owner, { barberId: 'b1', start: winner.end.toMillis(), end: winner.end.toMillis() + 30 * MIN })
+    assert.equal(after.ok, true)
+  })
+
+  it('never cancels or moves bookings and holds under a block: reports them, ignores expired holds, writes no audit', async () => {
+    const shopId = await makeShop(['b1', 'b2'])
+    const owner = await staffToken({ shopId, role: 'owner' })
+    const cust = await phoneIdToken(newPhone())
+    const booked = await seedBooking(shopId, 'b1', slot(10), cust.uid)
+    const held = await hold(shopId, 'b1', slot(10, 30))
+    assert.equal(held.ok, true)
+    const auditBefore = await count('auditLog', shopId)
+
+    const r = await block(owner, { barberId: 'b1', reason: '  Dentist  ' })
+    assert.equal(r.ok, true)
+    assert.equal(r.data.reason, 'Dentist')
+    assert.deepEqual(r.data.conflicts.map((c) => c.kind), ['booking', 'hold'])
+    assert.deepEqual(r.data.conflicts[0], {
+      kind: 'booking', start: slot(10), end: slot(10, 30), bookingId: booked, status: 'CONFIRMED',
+      customerName: 'Seed', customerPhoneMasked: '+65 9••• ••00', serviceId: 'cut',
+    })
+    assert.equal(r.data.conflicts[1].start, slot(10, 30))
+    assert.equal(JSON.stringify(r.data).includes(cust.uid), false, 'no customer ID is returned')
+
+    assert.equal((await apt(booked)).status, 'CONFIRMED')
+    assert.equal((await apt(held.data.requestId)).status, 'HELD')
+    const intervals = await intervalsOf(shopId, 'b1', slot(10))
+    assert.deepEqual(intervals.map((i) => i.kind).sort(), ['block', 'booking', 'hold'])
+    assert.equal(await count('auditLog', shopId), auditBefore, 'blocks write no auditLog (decisions A12)')
+
+    // An expired hold is not a conflict, and is pruned when the block is written.
+    await db.doc(`shops/${shopId}/schedules/b2_${dateKey(slot(10))}`).set({
+      barberId: 'b2', date: dateKey(slot(10)),
+      intervals: [{ start: Timestamp.fromMillis(slot(10)), end: Timestamp.fromMillis(slot(10, 30)), kind: 'hold', holdExpiresAt: Timestamp.fromMillis(Date.now() - 60e3) }],
+    })
+    const r2 = await block(owner, { barberId: 'b2' })
+    assert.deepEqual(r2.data.conflicts, [])
+    assert.deepEqual((await intervalsOf(shopId, 'b2', slot(10))).map((i) => i.kind), ['block'])
+  })
+
+  it('a booking adjacent to a block is not a conflict', async () => {
+    const shopId = await makeShop(['b1'])
+    const owner = await staffToken({ shopId, role: 'owner' })
+    const cust = await phoneIdToken(newPhone())
+    await seedBooking(shopId, 'b1', slot(9, 30), cust.uid) // 09:30-10:00
+    await seedBooking(shopId, 'b1', slot(11), cust.uid) // 11:00-11:30
+    const r = await block(owner, { barberId: 'b1' })
+    assert.equal(r.ok, true)
+    assert.deepEqual(r.data.conflicts, [])
+  })
+
+  it('removeBlock frees the time, is idempotent, and leaves bookings alone', async () => {
+    const shopId = await makeShop(['b1'])
+    const owner = await staffToken({ shopId, role: 'owner' })
+    const cust = await phoneIdToken(newPhone())
+    const booked = await seedBooking(shopId, 'b1', slot(10), cust.uid)
+    const made = await block(owner, { barberId: 'b1', start: slot(10), end: slot(12) })
+    const { blockId } = made.data
+    assert.equal((await hold(shopId, 'b1', slot(11))).reason, 'SLOT_TAKEN')
+
+    assert.deepEqual((await unblock(owner, blockId)).data, { blockId, removed: true })
+    assert.equal((await blockDocs(shopId)).length, 0)
+    assert.deepEqual((await intervalsOf(shopId, 'b1', slot(10))).map((i) => i.kind), ['booking'])
+    assert.equal((await apt(booked)).status, 'CONFIRMED')
+    assert.equal((await hold(shopId, 'b1', slot(11))).ok, true)
+    assert.deepEqual((await unblock(owner, blockId)).data, { blockId, removed: false })
+    assert.equal(kind(await intervalsOf(shopId, 'b1', slot(10)), 'hold').length, 1, 'a repeat removal touches nothing')
+  })
+
+  it('removeBlock racing holdSlot for the same time: at most one hold, and never a block and a hold together', async () => {
+    const shopId = await makeShop(['b1'])
+    const owner = await staffToken({ shopId, role: 'owner' })
+    const { blockId } = (await block(owner, { barberId: 'b1', start: slot(10), end: slot(11) })).data
+    const [removed, ...holds] = await Promise.all([unblock(owner, blockId), ...Array.from({ length: 10 }, () => hold(shopId, 'b1', slot(10)))])
+    assert.equal(removed.ok, true)
+    assert.equal(holds.filter((h) => h.ok).length <= 1, true)
+    for (const h of holds.filter((x) => !x.ok)) assert.equal(h.reason, 'SLOT_TAKEN')
+    const intervals = await intervalsOf(shopId, 'b1', slot(10))
+    assert.equal(kind(intervals, 'block').length, 0)
+    assert.equal(kind(intervals, 'hold').length, holds.filter((h) => h.ok).length)
+    assert.equal((await blockDocs(shopId)).length, 0)
+  })
+
+  it('a barber blocks only their own time; an owner blocks any barber of their own shop', async () => {
+    const shopId = await makeShop(['b1', 'b2'])
+    const b1 = await staffToken({ shopId, role: 'barber', barberId: 'b1' })
+    const owner = await staffToken({ shopId, role: 'owner' })
+
+    const own = await block(b1) // barberId defaults to the token's
+    assert.equal(own.ok, true)
+    assert.equal(own.data.barberId, 'b1')
+    assert.equal((await block(b1, { barberId: 'b1', start: slot(12), end: slot(13) })).ok, true)
+    const other = await block(b1, { barberId: 'b2' })
+    assert.equal(other.status, 'PERMISSION_DENIED')
+    assert.equal((await intervalsOf(shopId, 'b2', slot(10))).length, 0)
+
+    assert.equal((await block(owner, { barberId: 'b2' })).ok, true)
+    const docs = await blockDocs(shopId)
+    assert.equal(docs.length, 3)
+    assert.ok(docs.every((d) => typeof d.data().createdBy === 'string' && d.data().createdAt))
+    assert.equal((await block(owner)).status, 'INVALID_ARGUMENT', 'an owner must name a barber')
+    assert.equal((await block(owner, { barberId: 'ghost' })).status, 'INVALID_ARGUMENT')
+  })
+
+  it('a barber removes only their own blocks; other shops\' staff cannot touch them', async () => {
+    const shopId = await makeShop(['b1', 'b2'])
+    const otherShop = await makeShop(['b1'])
+    const owner = await staffToken({ shopId, role: 'owner' })
+    const b1 = await staffToken({ shopId, role: 'barber', barberId: 'b1' })
+    const b2 = await staffToken({ shopId, role: 'barber', barberId: 'b2' })
+    const strangers = await staffToken({ shopId: otherShop, role: 'owner' })
+    const cust = await phoneIdToken(newPhone())
+    const { blockId } = (await block(owner, { barberId: 'b2' })).data
+
+    assert.equal((await unblock(b1, blockId)).status, 'PERMISSION_DENIED')
+    assert.deepEqual((await unblock(strangers, blockId)).data, { blockId, removed: false }, 'blocks are looked up in the caller\'s own shop')
+    assert.equal((await unblock(cust.idToken, blockId)).status, 'PERMISSION_DENIED')
+    assert.equal((await unblock(undefined, blockId)).status, 'UNAUTHENTICATED')
+    assert.equal((await blockDocs(shopId)).length, 1)
+    assert.equal(kind(await intervalsOf(shopId, 'b2', slot(10)), 'block').length, 1)
+
+    assert.equal((await unblock(b2, blockId)).data.removed, true)
+    const again = (await block(owner, { barberId: 'b2' })).data.blockId
+    assert.equal((await unblock(owner, again)).data.removed, true, 'the owner may remove any block')
+  })
+
+  it('rejects customers, anonymous callers and other shops\' staff, and bad input, without writing anything', async () => {
+    const shopId = await makeShop(['b1'])
+    const owner = await staffToken({ shopId, role: 'owner' })
+    const cust = await phoneIdToken(newPhone())
+    assert.equal((await block(undefined, { barberId: 'b1' })).status, 'UNAUTHENTICATED')
+    assert.equal((await block(cust.idToken, { barberId: 'b1' })).status, 'PERMISSION_DENIED')
+    assert.equal((await block(await staffToken({ admin: true }), { barberId: 'b1' })).status, 'PERMISSION_DENIED')
+
+    const bad = [
+      { start: slot(10, 10) }, // off the 15-minute grid
+      { end: slot(10) }, // zero length
+      { start: slot(23), end: slot(25) }, // crosses midnight: single-day only
+      { start: slot(10) - 2 * 24 * 3600e3, end: slot(11) - 2 * 24 * 3600e3 }, // in the past
+      { start: slot(10) + 20 * 24 * 3600e3, end: slot(11) + 20 * 24 * 3600e3 }, // beyond the booking horizon
+      { reason: 'x'.repeat(201) },
+      { blockId: 'short' },
+    ]
+    for (const extra of bad) assert.equal((await block(owner, { barberId: 'b1', ...extra })).status, 'INVALID_ARGUMENT', JSON.stringify(extra))
+    assert.equal((await blockDocs(shopId)).length, 0)
+    assert.equal((await db.collection(`shops/${shopId}/schedules`).get()).size, 0)
+  })
+
+  it('a block over a slot makes customer holds fail and lets neighbouring slots through', async () => {
+    const shopId = await makeShop(['b1'])
+    const owner = await staffToken({ shopId, role: 'owner' })
+    assert.equal((await block(owner, { barberId: 'b1', start: slot(10), end: slot(11) })).ok, true)
+    assert.equal((await hold(shopId, 'b1', slot(10, 30))).reason, 'SLOT_TAKEN')
+    assert.equal((await hold(shopId, 'b1', slot(9, 45))).reason, 'SLOT_TAKEN', 'a 30-minute service starting 09:45 would run into the block')
+    assert.equal((await hold(shopId, 'b1', slot(9, 30))).ok, true)
+    assert.equal((await hold(shopId, 'b1', slot(11))).ok, true)
+  })
+})

@@ -1,7 +1,8 @@
 import { after, before, beforeEach, describe, it } from 'node:test'
 import { readFileSync } from 'node:fs'
+import assert from 'node:assert/strict'
 import { assertFails, assertSucceeds, initializeTestEnvironment } from '@firebase/rules-unit-testing'
-import { collection, deleteDoc, doc, endAt, getDoc, getDocs, orderBy, query, setDoc, setLogLevel, startAt, updateDoc, where } from 'firebase/firestore'
+import { Timestamp, collection, deleteDoc, doc, endAt, getDoc, getDocs, orderBy, query, setDoc, setLogLevel, startAt, updateDoc, where } from 'firebase/firestore'
 
 // Denied writes are expected here; keep the SDK from logging each one.
 setLogLevel('silent')
@@ -15,6 +16,8 @@ const admin = () => env.authenticatedContext('admin', { admin: true }).firestore
 const customer = (uid) => env.authenticatedContext(uid).firestore()
 const anon = () => env.unauthenticatedContext().firestore()
 
+const DAY_START = Timestamp.fromMillis(Date.UTC(2030, 0, 7, 2))
+const DAY_END = Timestamp.fromMillis(Date.UTC(2030, 0, 7, 10))
 const service = { name: 'Cut', category: 'haircut', durationMin: 30, priceCents: 2500, active: true }
 const barberDoc = { displayName: 'Ali', active: true, serviceIds: ['s1'], workingHours: { mon: [{ start: '09:00', end: '18:00' }] } }
 
@@ -36,8 +39,11 @@ beforeEach(async () => {
       await setDoc(doc(db, `shops/${id}/barbers/b1`), barberDoc)
       await setDoc(doc(db, `shops/${id}/schedules/x_20260101`), { intervals: [] })
     }
-    await setDoc(doc(db, 'appointments/apt1'), { shopId: 'a', barberId: 'b1', customerId: 'cust1' })
-    await setDoc(doc(db, 'appointments/apt2'), { shopId: 'a', barberId: 'b2', customerId: 'cust2' })
+    await setDoc(doc(db, 'appointments/apt1'), { shopId: 'a', barberId: 'b1', customerId: 'cust1', start: DAY_START })
+    await setDoc(doc(db, 'appointments/apt2'), { shopId: 'a', barberId: 'b2', customerId: 'cust2', start: DAY_START })
+    await setDoc(doc(db, 'shops/a/blocks/k1'), { barberId: 'b1', start: DAY_START, end: DAY_END, reason: 'Dentist' })
+    await setDoc(doc(db, 'shops/a/blocks/k2'), { barberId: 'b2', start: DAY_START, end: DAY_END, reason: 'Private' })
+    await setDoc(doc(db, 'shops/b/blocks/k3'), { barberId: 'b1', start: DAY_START, end: DAY_END })
     await setDoc(doc(db, 'auditLog/e1'), { shopId: 'a', bookingId: 'apt1' })
     await setDoc(doc(db, 'notifications/n1'), { shopId: 'a', bookingId: 'apt1' })
     await setDoc(doc(db, 'customers/cust1'), { phoneE164: '+6591234567' })
@@ -69,6 +75,55 @@ describe('FR-01 discovery query', () => {
   it('lets anyone list a verified shop\'s schedules by date but not a pending shop\'s', async () => {
     await assertSucceeds(getDocs(query(collection(anon(), 'shops/a/schedules'), where('date', '==', '20260101'))))
     await assertFails(getDocs(query(collection(anon(), 'shops/p/schedules'), where('date', '==', '20260101'))))
+  })
+})
+
+describe('FR-08 blocks and the barber day view', () => {
+  const blocksOf = (db, ...clauses) => getDocs(query(collection(db, 'shops/a/blocks'), ...clauses))
+  const day = [where('start', '>=', DAY_START), where('start', '<', DAY_END)]
+  const apts = (db, ...clauses) => getDocs(query(collection(db, 'appointments'), ...clauses, ...day))
+
+  it('a barber reads only their own blocks', async () => {
+    await assertSucceeds(getDoc(doc(barber('a', 'b1'), 'shops/a/blocks/k1')))
+    await assertFails(getDoc(doc(barber('a', 'b1'), 'shops/a/blocks/k2')))
+    const own = await assertSucceeds(blocksOf(barber('a', 'b1'), where('barberId', '==', 'b1'), ...day))
+    assert.deepEqual(own.docs.map((d) => d.id), ['k1'])
+    await assertFails(blocksOf(barber('a', 'b1'), where('barberId', '==', 'b2'), ...day))
+    await assertFails(blocksOf(barber('a', 'b1'))) // an unconstrained list would expose other barbers' reasons
+  })
+  it('an owner reads every block in their own shop, and no other shop\'s', async () => {
+    await assertSucceeds(getDoc(doc(owner('a'), 'shops/a/blocks/k1')))
+    await assertSucceeds(getDoc(doc(owner('a'), 'shops/a/blocks/k2')))
+    const all = await assertSucceeds(blocksOf(owner('a')))
+    assert.equal(all.size, 2)
+    await assertFails(getDoc(doc(owner('b'), 'shops/a/blocks/k1')))
+    await assertFails(getDoc(doc(owner('a'), 'shops/b/blocks/k3')))
+  })
+  it('customers, anonymous users, other shops\' barbers and admins cannot read blocks', async () => {
+    for (const db of [customer('cust1'), anon(), barber('b', 'b1'), admin()]) {
+      await assertFails(getDoc(doc(db, 'shops/a/blocks/k1')))
+    }
+  })
+  it('a barber\'s day query needs both shopId and barberId; an owner\'s needs shopId', async () => {
+    const mine = await assertSucceeds(apts(barber('a', 'b1'), where('shopId', '==', 'a'), where('barberId', '==', 'b1')))
+    assert.deepEqual(mine.docs.map((d) => d.id), ['apt1'])
+    await assertFails(apts(barber('a', 'b1'), where('shopId', '==', 'a')))
+    await assertFails(apts(barber('a', 'b1'), where('shopId', '==', 'a'), where('barberId', '==', 'b2')))
+    const both = await assertSucceeds(apts(owner('a'), where('shopId', '==', 'a')))
+    assert.equal(both.size, 2)
+    const one = await assertSucceeds(apts(owner('a'), where('shopId', '==', 'a'), where('barberId', '==', 'b2')))
+    assert.deepEqual(one.docs.map((d) => d.id), ['apt2'])
+    await assertFails(apts(owner('b'), where('shopId', '==', 'a')))
+  })
+  it('nobody writes blocks or schedule intervals from the client', async () => {
+    const block = { barberId: 'b1', start: DAY_START, end: DAY_END, reason: 'x' }
+    for (const db of [anon(), customer('cust1'), owner('a'), barber('a', 'b1'), admin()]) {
+      await assertFails(setDoc(doc(db, 'shops/a/blocks/new'), block))
+      await assertFails(updateDoc(doc(db, 'shops/a/blocks/k1'), { reason: 'changed' }))
+      await assertFails(deleteDoc(doc(db, 'shops/a/blocks/k1')))
+      await assertFails(updateDoc(doc(db, 'shops/a/schedules/x_20260101'), { intervals: [] }))
+      await assertFails(deleteDoc(doc(db, 'shops/a/schedules/x_20260101')))
+    }
   })
 })
 

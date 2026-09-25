@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { isOwner, session, signIn, signOut } from '@/stores/session'
+import { isStaff, landingRoute, session, signIn, signOut } from '@/stores/session'
 
 const route = useRoute()
 const router = useRouter()
@@ -22,7 +22,7 @@ function validate() {
   return Object.keys(e).length === 0
 }
 
-// Signed in but not an owner (barber, admin): show why, instead of the form.
+// Signed in but not staff (customer, admin): show why, instead of the form.
 async function onSignOut() {
   await signOut()
   router.replace({ name: 'login' })
@@ -36,7 +36,7 @@ async function onSubmit() {
     await signIn(email.value.trim(), password.value)
     const target = typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/')
       ? route.query.redirect
-      : '/staff/config'
+      : router.resolve(landingRoute()).fullPath
     await router.push(target)
   } catch (err) {
     // The email stays filled in; only the password is cleared.
@@ -52,11 +52,11 @@ async function onSubmit() {
 
 <template>
   <main>
-    <template v-if="session.user && !isOwner()">
+    <template v-if="session.user && !isStaff()">
       <h1>Not authorised</h1>
       <p class="banner" role="alert">
-        Shop configuration (UI-O1) is for shop owners only. You are signed in as
-        {{ session.user.email }}, which is not an owner account.
+        The staff area is for shop owners and barbers. You are signed in as
+        {{ session.user.email ?? session.user.phoneNumber }}, which is not a staff account.
       </p>
       <button class="btn" type="button" @click="onSignOut">Sign out</button>
     </template>

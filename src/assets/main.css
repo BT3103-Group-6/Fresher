@@ -126,3 +126,25 @@ a.btn { display: inline-flex; align-items: center; text-decoration: none; }
 a { color: var(--teal); }
 a.btn { color: #fff; }
 .footer { margin-top: 2rem; }
+
+/* Staff navigation and barber schedule (UI-B1) */
+.staff-nav { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; }
+.staff-nav a { font-weight: 600; text-decoration: none; padding: 0.6rem 0; }
+.staff-nav a.router-link-active { border-bottom: 3px solid var(--teal); }
+.bar .who { margin-left: auto; font-size: 0.9rem; }
+.day-nav { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: end; margin-bottom: 1rem; }
+.day-nav .field { margin-bottom: 0; }
+.timeline { list-style: none; padding: 0; margin: 0 0 1rem; }
+.timeline li { border: 1px solid var(--line); border-left-width: 6px; border-radius: 8px; padding: 0.75rem; margin-bottom: 0.5rem; }
+.timeline li.block { border-left-color: #6b7375; background: var(--off-bg); }
+.timeline li.held { border-left-style: dashed; border-left-color: var(--teal); }
+.timeline li.confirmed { border-left-color: var(--teal); }
+.timeline li.gone { opacity: 0.75; border-left-color: var(--line); }
+.timeline .when { font-weight: 700; margin: 0; }
+.timeline .meta { margin: 0.15rem 0 0; }
+.badge.warn { background: #fdecc8; color: #6b4200; }
+.alert-list { margin: 0.5rem 0 0; padding-left: 1.25rem; }
+.banner.info { border-color: #6b4200; color: #4a2f00; background: #fff8e6; }
+textarea { font: inherit; padding: 0.55rem 0.65rem; border: 1px solid #6b7375; border-radius: 6px; min-height: 44px; }
+input[type='date'] { font: inherit; padding: 0.55rem 0.65rem; border: 1px solid #6b7375; border-radius: 6px; min-height: 44px; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0 0.75rem; }
