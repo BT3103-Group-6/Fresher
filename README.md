@@ -4,8 +4,6 @@
 
 Fresher is a booking and scheduling platform for Singapore barbershops and small salons. It charges a flat monthly fee per chair with **no commission on any booking**, so a shop selling SGD 15 haircuts carries the same proportional overhead as one selling SGD 200 treatments. Walk-in queues and booked appointments share one chair timeline, so shops can adopt Fresher without abandoning the first-come-first-served model they already run.
 
-> BT3103 Mid-Term Project — Mohammad Firas, Muhammad Haziq Bin Noorazmi, Teo K-Rei, Francis Goon Wei Shan
-
 ---
 
 ## Why Fresher
