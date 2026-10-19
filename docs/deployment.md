@@ -46,6 +46,18 @@ This is a **demo**: SMS and payments are mocked, customers sign in with Firebase
 Nothing to register while `VITE_APP_CHECK_ENABLED=false` and `APP_CHECK_ENFORCE=false`. The build does not need a site key and the web app does not start App Check. To turn it on later, follow "Turning App Check on" at the end.
 
 ### 4. Budget and APIs
+- [ ] **Google Maps key** for the landing page map (decisions A20, L46): Google Cloud console (project `fresher-6d857`) -> APIs & Services -> enable **Maps JavaScript API** -> Credentials -> Create API key. Restrict it: *Application restrictions* = Websites, allowing `http://localhost:5173/*` and the exact preview channel host (add it after the first channel deploy, as with Authorized domains); *API restrictions* = Maps JavaScript API only. The Maps API needs the billing account linked; add a budget alert for it. Put the key in `.env.local` as `VITE_GOOGLE_MAPS_API_KEY` (not committed). Without the key the app still builds and the map section shows the list view.
+- [ ] **Map ID and map style** (decisions A20, L48; needed for the decluttered look, and for Advanced Markers to be styled). In the same Cloud project: Google Maps Platform -> **Map Management** (the label may read "Map management" in the sidebar; Google renames things now and then).
+  1. **Create a Map ID:** Map IDs -> *Create Map ID*. Name `fresher-landing`; Map type **JavaScript**; Map type option **Vector** (raster also works); leave tilt and rotation off. Save. Copy the Map ID.
+  2. **Create the style:** Map Styles -> *Create style*. Start from the default (Standard) map. In the style editor:
+     - **Points of interest:** set visibility to *off* for the whole group, or one by one: Attractions, Business, Government, Medical, Parks, Place of worship, School, Sports complex. (If you keep parks at all, hide their *icons* and keep only the area fill.)
+     - **Transit:** hide *Stations* (rail, bus, airport icons); hiding all of Transit is fine.
+     - **Landscape / natural (parks and green areas):** fill a muted grey-green such as `#DDE8E4` (or `#E9EEEC`); no saturated green.
+     - **Water:** fill a muted blue-grey such as `#C9DAE0`.
+     - **Roads and labels:** leave roads and the road, neighbourhood and area names visible (people orient by them); optionally lighten road strokes to `#FFFFFF` fill and `#E3E8E6` stroke.
+     Save, then **Publish** the style.
+  3. **Attach the style:** Map IDs -> `fresher-landing` -> *Map style* -> pick the published style -> Save. Changes can take a few minutes to appear.
+  4. **Use it:** put the Map ID in `.env.local` as `VITE_GOOGLE_MAP_ID=<the id>` and restart `npm run dev` (Vite reads the file at start); for the demo build set it before `npm run build`. The Map ID is not secret, and no key restriction is needed for it. If it is unset the code falls back to `DEMO_MAP_ID` (no custom style).
 - [ ] Budget alert set (you did this). Consider also a budget action or a low cap for the first week.
 - [ ] `firebase deploy` will enable the other APIs it needs (Cloud Build, Artifact Registry, Cloud Run, Eventarc, Pub/Sub, Cloud Scheduler, Secret Manager). If a deploy asks you to enable one, say yes.
 
@@ -77,7 +89,7 @@ Check the emulators still ignore the production file: start them as usual and co
 openssl rand -hex 32 | npx -y firebase-tools@latest functions:secrets:set PAYMENT_WEBHOOK_SECRET --data-file - --project prod
 ```
 
-- **Do not create `ONEMAP_TOKEN`.** In demo mode `geocode` does not bind it. (If you turn demo mode off later you must create it first, or the deploy stops.)
+- **Do not create `ONEMAP_TOKEN`.** In demo mode `functions/index.js` does not even declare it (the CLI prompts for every declared secret, bound or not), so the deploy never asks for a value; `tests/demo.unit.test.mjs` checks this. (If you turn demo mode off later you must create it first, or the deploy stops.)
 - Confirm: `npx -y firebase-tools@latest functions:secrets:get PAYMENT_WEBHOOK_SECRET --project prod` shows the secret exists (it prints metadata, or the value; do not paste it anywhere).
 
 ## Part 4 — Deploy, in this order
@@ -125,12 +137,18 @@ The build guard fails when `VITE_FIREBASE_*` is missing or starts with `demo-`, 
 
 It creates the fictional shops, services, barbers and the staff accounts (`owner@shop-*.example.com`, `barber@…`, `admin@fresher.example.com`) with the password you gave. Print of the account list appears in your terminal only. Re-running with `--overwrite` replaces the sample shops and resets their edited fields (L39).
 
+**Demo dataset (A18).** The same command also seeds 50 fictional demo shops (`demo-NN-<area>`) with barbers, services, personal blocks, 14 days of past bookings and 7 days of upcoming ones, plus customers, a few waitlist entries and walk-ins. It creates about 212 more staff accounts (`owner@<shopId>.example.com` and `<barberId>@<shopId>.example.com`, same password) and 8 showcase customer accounts. The existing rules are unchanged; the existing-shops check also covers the demo shop IDs, so a second run needs `--overwrite`, which deletes and regenerates the demo shops' generated data. Add `--skip-demo` to seed only the four sample shops. Check the size first with `npm run demo:dry-run` (no Firebase access): it prints the document counts and the estimated write cost (about 20,400 writes, roughly US$0.04, about one day of the free write quota; A18 has the breakdown). Afterwards the script reads the data back, validates it and prints the counts.
+
+To sign in as a showcase customer, add these as **test phone numbers** (Console -> Authentication -> Sign-in method -> Phone; up to 10, L38) with any six-digit codes: `+65 8000 0101` to `+65 8000 0108`. Two or more no-shows at a shop (deposit demo): 0101, 0102, 0103. History and Rebook across shops: 0104 to 0107; 0108 has a mix (one no-show, below the deposit threshold). Postal search in demo mode now accepts any valid six-digit postal code (nearest sector centroid); exact codes `160055`, `520478`, `600135` still work.
+
+
 ## Part 6 — First deploy checks (tick these, then mark L20 and L33 resolved)
 
 - [ ] The preview URL loads on `/`, `/my-bookings` and `/staff/config` (no demo banner, by decision). `https://fresher-6d857.web.app` itself is **not** deployed (Hosting shows the default page or nothing).
+- [ ] Landing page map (L47): scroll to "Barbers across Singapore": Google map loads only then (Network shows no `maps.googleapis.com` request before), pins and clusters show, Tab reaches a pin and Enter opens the card, one finger scrolls the page on a phone, and "View as list" lists all shops. A `RefererNotAllowedMapError` in the console means the channel host is missing from the key's referrers.
 - [ ] Phone sign-in on the preview URL works with a test number (no `auth/unauthorized-domain`).
 - [ ] Devtools -> Network: no `firebase-appcheck` calls (App Check is off, as intended).
-- [ ] Search postal code `600135`: results appear (stub). An unlisted code such as `123456` says not found; nothing calls OneMap.
+- [ ] Search postal code `600135`: results appear (stub). A code that is not in the exact table, such as `123456`, is placed at its postal sector's approximate centre and finds nearby demo shops; a code in a sector that does not exist, such as `999999`, says not found; nothing calls OneMap.
 - [ ] Book a slot with a test phone number: hold, code, confirmation. The mock SMS link in the notification task (Console → Firestore → `notifications`) starts with the preview channel URL.
 - [ ] Staff sign-in at `/login` with the seeded owner and your `SEED_STAFF_PASSWORD`; `/staff/config` loads.
 - [ ] Firestore → Indexes: all **Enabled** (L20, L33).

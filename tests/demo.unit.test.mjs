@@ -2,6 +2,7 @@
 import { afterEach, describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
+import { execFileSync } from 'node:child_process'
 
 const demo = createRequire(import.meta.url)('../functions/demo.js')
 
@@ -66,5 +67,39 @@ describe('demo mode', () => {
     assert.equal(demo.mocksAllowed(), false)
     setEnv({ demoMode: 'true' })
     assert.equal(demo.appCheckEnforced(), true)
+  })
+})
+
+// Deploy-time behaviour: the CLI prompts for every *declared* secret, bound or not, so in demo mode ONEMAP_TOKEN must
+// not be declared at all. Loads functions/index.js in a child process, as the CLI does when it analyses the functions.
+describe('ONEMAP_TOKEN at deploy time', () => {
+  const inspect = (env) => {
+    const script = `
+      const {declaredParams} = require('firebase-functions/params');
+      const fns = require('./index.js');
+      const secrets = (fns.geocode.__endpoint.secretEnvironmentVariables || []).map((s) => s.key);
+      console.log(JSON.stringify({declared: declaredParams.map((p) => p.name), secrets}));`
+    const clean = { ...process.env, ...env }
+    for (const k of Object.keys(clean)) if (clean[k] === undefined) delete clean[k]
+    const out = execFileSync(process.execPath, ['-e', script], { cwd: new URL('../functions/', import.meta.url), env: clean, encoding: 'utf8' })
+    return JSON.parse(out.trim().split('\n').pop())
+  }
+  it('neither declares nor binds it when DEMO_MODE=true', () => {
+    const r = inspect({ DEMO_MODE: 'true', FUNCTIONS_EMULATOR: undefined })
+    assert.ok(!r.declared.includes('ONEMAP_TOKEN'))
+    assert.deepEqual(r.secrets, [])
+    assert.ok(r.declared.includes('PAYMENT_WEBHOOK_SECRET'), 'the payment secret is still declared')
+  })
+  it('declares and binds it when demo mode is off', () => {
+    for (const DEMO_MODE of [undefined, 'false']) {
+      const r = inspect({ DEMO_MODE, FUNCTIONS_EMULATOR: undefined })
+      assert.ok(r.declared.includes('ONEMAP_TOKEN'))
+      assert.deepEqual(r.secrets, ['ONEMAP_TOKEN'])
+    }
+  })
+  it('still answers postal lookups without a token in demo mode', async () => {
+    const { geocode } = createRequire(import.meta.url)('../functions/geocode.js')
+    assert.equal((await geocode({ postalCode: '160055' }, '', () => assert.fail('no fetch'), true)).lat, 1.2855)
+    assert.equal((await geocode({ postalCode: '123456' }, '', () => assert.fail('no fetch'), true)).approximate, true)
   })
 })

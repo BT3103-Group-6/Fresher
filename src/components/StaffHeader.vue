@@ -76,9 +76,9 @@ async function onSignOut() {
       Menu
     </button>
     <nav id="staff-nav" class="staff-nav" :class="{ open: navOpen }" aria-label="Staff">
+      <RouterLink v-if="isOwner()" :to="{ name: 'dashboard' }">Dashboard</RouterLink>
       <RouterLink :to="{ name: 'schedule' }">Schedule</RouterLink>
       <RouterLink :to="{ name: 'queue' }">Queue</RouterLink>
-      <RouterLink v-if="isOwner()" :to="{ name: 'dashboard' }">Dashboard</RouterLink>
       <RouterLink v-if="isOwner()" :to="{ name: 'shop-config' }">Shop configuration</RouterLink>
     </nav>
 

@@ -7,6 +7,7 @@ export const search = reactive({
   type: '',
   searched: false,
   origin: '',
+  center: null, // [lat, lng] of the searched point, for the map's search circle (A20)
   shops: [],
   slotState: {}, // `${shopId}|${type}` -> 'loading' | 'error' | { at: ms | null }
 })

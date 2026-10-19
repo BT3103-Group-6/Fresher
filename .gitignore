@@ -37,3 +37,27 @@ __screenshots__/
 
 # Vite
 *.timestamp-*-*.mjs
+
+# Secrets and environment files (keep .env.example; .env.production holds flags only, no keys)
+.env
+.env.*
+!.env.example
+!.env.production
+functions/.env.prod
+functions/.env.*
+functions/.secret.local
+*.secret.local
+
+# Service-account keys
+*service-account*.json
+*serviceAccount*.json
+*-firebase-adminsdk-*.json
+credentials.json
+
+# Firebase debug logs and emulator export data
+firebase-debug*.log
+firestore-debug*.log
+ui-debug*.log
+emulator-data/
+.emulator-data/
+firebase-export-*/

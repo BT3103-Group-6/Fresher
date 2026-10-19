@@ -42,6 +42,7 @@ Customers find nearby shops by postal code or shared location, filter by service
 - Lists shops within a 3 km radius of the searched postal code or shared location.
 - Shows distance, price range and next available slot for each result.
 - Falls back to postal code entry when location permission is denied.
+- The landing page also shows every verified shop on a map ("Barbers across Singapore", decisions A20): clustered pins with a card (name, area, price range, service types, link to the shop), Google Maps base map, and a "View as list" alternative grouped by region. It loads only when scrolled into view.
 
 ### FR-02 Real-time availability — High — Core — UI-C2, T-F02
 Shows bookable slots for a selected service and barber, reflecting working hours, existing bookings and blocks, refreshed so customers don't act on stale data.
@@ -121,6 +122,7 @@ Owners review performance over a chosen period.
 - Reports completed bookings, booked value, no-show rate and utilisation per barber.
 - Counts bookings by appointment start time within the selected date range.
 - Shows zero values with an empty-state message when no bookings exist.
+- Compares each headline figure with the previous period of the same length and charts bookings per day, utilisation per barber and the busiest weekdays, with a text summary and table view for every chart (decision A19).
 
 ### FR-15 Waitlist — Low — Stretch — UI-C6, T-F15
 Customers join a waitlist for a date and are offered freed capacity in joining order.

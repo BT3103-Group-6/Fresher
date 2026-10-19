@@ -37,6 +37,16 @@
  *   --color-focus        #0D3B38 on surface    #FFFFFF 12.35
  *   The focus ring sits 2px outside its control, so it is always drawn on the
  *   page background, never on the accent fill.
+ *   Hero wash (--gradient-hero): its darkest pixel is the teal glow centre #DCEEEA
+ *   (= --color-tint), so the tint rows above are the worst case: muted 6.03,
+ *   accent 6.23, text 12.17. Mint #EAF5F2 and warm #FBFCFA are lighter, so
+ *   every text colour has more contrast there than on the tint.
+ *   Chart colours (UI-O2, decision A19), non-text 3:1 against white:
+ *   --chart-primary  #1D5E5A  7.50  (lightness L* 36; completed bars, utilisation bars)
+ *   --chart-noshow   #8A5200  6.39  (L* 40; outline and hatching of no-show bars)
+ *   --chart-noshow-fill #F6D48A (L* 86, light: the no-show bar reads much lighter than the teal bar, and is hatched)
+ *   --chart-line     #1E2B2A 14.64  (L* 16; booked value line, with a white halo where it crosses bars)
+ *   Stripe #8A5200 on fill #F6D48A is 4.47; teal beside the fill is 5.25.
  *   --color-line #D3DCDA (1.40 on white) is decorative only (card and list
  *   outlines); nothing depends on it to be understood.
  */
@@ -48,6 +58,15 @@
   --color-accent-dark: #154744;
   --color-tint: #dceeea;
   --color-tint-strong: #c6e2dc;
+  --color-hero-glow-mint: #eaf5f2;
+  --color-hero-glow-teal: #dceeea;
+  --color-hero-glow-warm: #fbfcfa;
+  --hero-wash-height: 42rem;
+  --gradient-hero:
+    radial-gradient(ellipse 34rem 22rem at 8% 8rem, var(--color-hero-glow-mint) 0%, transparent 72%),
+    radial-gradient(ellipse 30rem 24rem at 94% 20rem, var(--color-hero-glow-teal) 0%, transparent 74%),
+    radial-gradient(ellipse 26rem 18rem at 56% 4rem, var(--color-hero-glow-warm) 0%, transparent 76%),
+    linear-gradient(to bottom, var(--color-hero-glow-warm) 0%, var(--color-background) 100%);
   --color-text: #1e2b2a;
   --color-muted: #4a5a58;
   --color-background: #f6f8f7;
@@ -64,6 +83,10 @@
   --color-danger-bg: #fbe3e0;
   --color-neutral-fg: #3f4e4c;
   --color-neutral-bg: #e6ebea;
+  --chart-primary: #1d5e5a;
+  --chart-noshow: #8a5200;
+  --chart-noshow-fill: #f6d48a;
+  --chart-line: #1e2b2a;
 
   /* Typography */
   --font-sans: 'Manrope Variable', Manrope, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
@@ -116,6 +139,16 @@ body {
   line-height: var(--leading);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Soft hero wash on every page (also usable on any full-width block via `.hero-wash`).
+   Painted only in the top --hero-wash-height; every layer is transparent or --color-background by then. */
+.hero-wash,
+body {
+  background-color: var(--color-background);
+  background-image: var(--gradient-hero);
+  background-repeat: no-repeat;
+  background-size: 100% var(--hero-wash-height);
 }
 
 h1, h2, h3 { font-weight: 800; line-height: 1.25; letter-spacing: -0.01em; }

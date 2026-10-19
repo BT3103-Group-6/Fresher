@@ -89,8 +89,11 @@ async function onSubmit() {
 </template>
 
 <style scoped>
-.signin { padding: var(--space-5) 0 var(--space-6); }
-.panel { max-width: 28rem; }
+/* The panel is centred in the space below the header (about 9rem: #app padding plus the header and its margin). */
+.signin { min-height: calc(100vh - 9rem); min-height: calc(100dvh - 9rem); display: flex; align-items: center; justify-content: center; padding: var(--space-5) 0; }
+.panel { width: 100%; max-width: 28rem; margin-bottom: 0; }
+h1, .lede { text-align: center; }
+.lede { margin-left: auto; margin-right: auto; }
 .card.panel { padding: var(--space-5); box-shadow: var(--shadow-raised); }
 h1 { font-size: clamp(1.9rem, 5vw, 2.75rem); line-height: 1.1; letter-spacing: -0.03em; margin-bottom: var(--space-2); }
 .lede { font-size: 1.1rem; color: var(--color-muted); margin-bottom: var(--space-5); }
@@ -100,5 +103,5 @@ input { font-size: 1.1rem; min-height: 52px; }
 form .btn { width: 100%; margin-top: var(--space-2); }
 .panel > .banner { margin-bottom: var(--space-4); }
 .card.panel .btn { min-width: 8rem; }
-.dev { max-width: 28rem; }
+.dev { text-align: center; }
 </style>

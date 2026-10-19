@@ -1,4 +1,5 @@
-// Loads fictional shops, barbers, services and staff accounts into the Firebase EMULATORS.
+// Loads fictional shops, barbers, services and staff accounts into the Firebase EMULATORS, then the A18 demo dataset
+// (50 shops with bookings, customers, waitlist and walk-ins; see docs/decisions.md A18). `--skip-demo` leaves that out.
 // Usage: start the emulators, then `npm run seed`. Safe to rerun (fixed IDs, upserts).
 // Live mode (`npm run seed:live -- --confirm-live=<project id>`) is for the public demo project only (A17).
 import { initializeApp } from 'firebase-admin/app'
@@ -6,6 +7,9 @@ import { getAuth } from 'firebase-admin/auth'
 import { getFirestore } from 'firebase-admin/firestore'
 import { createRequire } from 'node:module'
 import { geohashForLocation } from 'geofire-common'
+import { generateDemoData } from './demo/generate.mjs'
+import { validateDataset } from './demo/validate.mjs'
+import { seedDemo } from './demo/write.mjs'
 
 // Same summary the services trigger computes, so seeded shops look identical with or without the Functions emulator.
 const { summarizeServices } = createRequire(import.meta.url)('../functions/discovery.js')
@@ -14,6 +18,7 @@ const PROJECT_ID = 'fresher-6d857'
 const args = process.argv.slice(2)
 const live = args.includes('--live')
 const overwrite = args.includes('--overwrite')
+const skipDemo = args.includes('--skip-demo')
 const emulatorVars = ['FIRESTORE_EMULATOR_HOST', 'FIREBASE_AUTH_EMULATOR_HOST']
 const die = (message) => {
   console.error(message)
@@ -24,7 +29,7 @@ let staffPassword = 'password123'
 if (live) {
   // A17 live mode: writes to the REAL project. Runs only with --confirm-live=<project id>, never with emulator
   // variables set, and never with a default password. `npm run seed:live` on its own therefore refuses.
-  const known = ['--live', '--overwrite']
+  const known = ['--live', '--overwrite', '--skip-demo']
   const unknown = args.filter((a) => !known.includes(a) && !a.startsWith('--confirm-live='))
   if (unknown.length) die(`Refusing to seed: unknown option ${unknown.join(' ')}.`)
   if (emulatorVars.some((v) => process.env[v])) {
@@ -42,7 +47,8 @@ if (live) {
   staffPassword = process.env.SEED_STAFF_PASSWORD ?? ''
   if (staffPassword.length < 12) die('Refusing to seed live: set SEED_STAFF_PASSWORD to at least 12 characters.')
 } else {
-  if (args.length) die(`Refusing to seed: unknown option ${args.join(' ')}. Live seeding is \`npm run seed:live\` (see docs/deployment.md).`)
+  const unknown = args.filter((a) => a !== '--skip-demo')
+  if (unknown.length) die(`Refusing to seed: unknown option ${unknown.join(' ')}. Live seeding is \`npm run seed:live\` (see docs/deployment.md).`)
   if (!emulatorVars.every((v) => process.env[v])) {
     die(
       'Refusing to seed: set FIRESTORE_EMULATOR_HOST and FIREBASE_AUTH_EMULATOR_HOST ' +
@@ -54,6 +60,13 @@ if (live) {
 const app = initializeApp({ projectId: PROJECT_ID })
 const db = getFirestore(app)
 const auth = getAuth(app)
+
+// A18: generate and validate the demo dataset before anything is written, so a bad dataset never reaches Firebase.
+const demo = skipDemo ? null : generateDemoData()
+if (demo) {
+  const problems = validateDataset(demo)
+  if (problems.length) die(`Refusing to seed: the demo dataset failed validation:\n  ${problems.slice(0, 10).join('\n  ')}`)
+}
 
 const weekdays = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
 const hours = (days, start, end) =>
@@ -151,8 +164,10 @@ async function upsertUser(uid, email, claims) {
 
 if (live && !overwrite) {
   const existing = []
-  for (const { id } of shops) if ((await db.doc(`shops/${id}`).get()).exists) existing.push(id)
-  if (existing.length) die(`Refusing to seed live: ${existing.join(', ')} already exist. Add --overwrite to replace them.`)
+  for (const { id } of [...shops, ...(demo ? demo.shops : [])]) if ((await db.doc(`shops/${id}`).get()).exists) existing.push(id)
+  if (existing.length) {
+    die(`Refusing to seed live: ${existing.slice(0, 6).join(', ')}${existing.length > 6 ? ` and ${existing.length - 6} more` : ''} already exist. Add --overwrite to replace them.`)
+  }
 }
 if (live) console.log(`Seeding LIVE project ${PROJECT_ID}${overwrite ? ' (overwriting existing sample shops)' : ''}...`)
 
@@ -201,3 +216,13 @@ await upsertUser('platform-admin', 'admin@fresher.example.com', { admin: true })
 console.log(`Seeded ${shops.length} shops (fictional data).`)
 console.log(live ? 'Staff logins (password: the SEED_STAFF_PASSWORD you gave):' : `Staff logins (password for all: ${staffPassword}):`)
 for (const [email, claims] of staffAccounts) console.log(`  ${email}  ${claims}`)
+
+if (demo) {
+  // With --overwrite (live) or in the emulator, the demo shops' earlier generated data is removed first.
+  const result = await seedDemo({ db, auth, ds: demo, password: staffPassword, clean: !live || overwrite })
+  console.log(`\nDemo staff logins (same password as above): owner@<shop id>.example.com and <barber id>@<shop id>.example.com`)
+  for (const s of demo.shops) console.log(`  ${s.id.padEnd(28)} ${s.barbers.map((b) => b.id).join(', ')}`)
+  console.log('\nShowcase customers (Auth users; add these numbers as Firebase test phone numbers to sign in as them):')
+  for (const c of demo.showcase) console.log(`  ${c.phoneE164}  ${c.displayName.padEnd(20)} ${c.role === 'deposit' ? 'two or more no-shows at one shop (deposit checkout)' : 'history across shops (History and Rebook)'}`)
+  if (!result.ok) process.exit(1)
+}

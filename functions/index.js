@@ -149,12 +149,15 @@ exports.reschedule =
 // L12); elsewhere it returns "unavailable".
 // In demo mode the token is not bound at all (an unset secret would stop the
 // deploy) and the stub answers (A17, L12).
-const onemapToken = defineSecret("ONEMAP_TOKEN");
+// The secret is not even declared in demo mode: the deploy prompts for every
+// declared secret, bound or not. DEMO_MODE comes from functions/.env.prod,
+// which the CLI loads before it analyses this file.
+const onemapToken = demo.demoMode() ? null : defineSecret("ONEMAP_TOKEN");
 const geocoder = require("./geocode");
 exports.geocode = onCall(
-    {...APP_CHECK, secrets: demo.demoMode() ? [] : [onemapToken]},
+    {...APP_CHECK, secrets: onemapToken ? [onemapToken] : []},
     (request) => geocoder.geocode(request.data,
-        demo.demoMode() ? "" : onemapToken.value(), fetch,
+        onemapToken ? onemapToken.value() : "", fetch,
         demo.mocksAllowed()));
 
 // FR-01: keep the trigger-owned shop summary (priceMin, priceMax, serviceTypes,

@@ -3,7 +3,7 @@
 // device location -> verified shops within 3 km -> optional service-type filter -> cards with distance,
 // price range and next slot. The next slot is looked up only for the nearest shops, one at a time, after
 // the list is on screen. Search state lives in a store so going back from a shop keeps it.
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import CombMotif from '@/components/CombMotif.vue'
 import { isStaff, landingRoute } from '@/stores/session'
@@ -30,11 +30,25 @@ const setOnline = () => { online.value = navigator.onLine }
 window.addEventListener('online', setOnline)
 window.addEventListener('offline', setOnline)
 onUnmounted(() => {
+  mapObserver?.disconnect()
   window.removeEventListener('online', setOnline)
   window.removeEventListener('offline', setOnline)
 })
 
 const results = computed(() => filterByType(search.shops, search.type))
+
+// "Barbers across Singapore" map (A20): a placeholder until it scrolls into view, then its own chunk (the Google Maps
+// script, the marker clusterer and the Firestore read all load with it), so none of that touches the first load.
+const mapSection = ref(null)
+const mapComp = shallowRef(null)
+const mapWanted = ref(false)
+const mapReady = ref(false)
+const mapMatchIds = computed(() => (search.searched ? results.value.map((s) => s.id) : null))
+let mapObserver = null
+function loadMap() {
+  mapWanted.value = true
+  import('@/components/ShopMapSection.vue').then((m) => { mapComp.value = m.default }, () => { mapWanted.value = false })
+}
 const keyFor = (shop) => `${shop.id}|${search.type}`
 
 async function run(center, label) {
@@ -43,6 +57,7 @@ async function run(center, label) {
   try {
     search.shops = await searchShops(center)
     search.origin = label
+    search.center = center
     search.searched = true
   } catch {
     notice.value = 'Could not load shops. Check your connection and try again. Your search is kept.'
@@ -113,6 +128,17 @@ async function loadSlots() {
 }
 watch(results, loadSlots)
 onMounted(() => {
+  if ('IntersectionObserver' in window) {
+    mapObserver = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        mapObserver.disconnect()
+        loadMap()
+      }
+    }, { rootMargin: '0px' })
+    mapObserver.observe(mapSection.value)
+  } else {
+    loadMap()
+  }
   // A lookup interrupted by leaving the page must run again; finished ones are kept.
   for (const k of Object.keys(slotState)) if (slotState[k] === 'loading') delete slotState[k]
   if (search.searched) loadSlots()
@@ -201,6 +227,13 @@ function slotText(shop) {
       </template>
     </section>
 
+    <section id="map" ref="mapSection" aria-labelledby="map-h" class="map-section">
+      <div class="comb-rule" aria-hidden="true"></div>
+      <h2 id="map-h">Barbers across Singapore</h2>
+      <component :is="mapComp" v-if="mapComp" :match-ids="mapMatchIds" :center="search.searched ? search.center : null" skip-target="why-h" @ready="mapReady = true" />
+      <div v-if="!mapReady" class="map-placeholder"><p class="hint" role="status">{{ mapWanted ? 'Loading map…' : 'The map loads as you scroll.' }}</p></div>
+    </section>
+
     <section aria-labelledby="why-h" class="why">
       <div class="comb-rule" aria-hidden="true"></div>
       <h2 id="why-h">Why Fresher</h2>
@@ -271,6 +304,8 @@ function slotText(shop) {
 .chip[aria-pressed='true'], .chip[aria-pressed='true']:hover { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-surface); }
 
 
+.map-placeholder { display: grid; place-items: center; height: 22rem; max-height: 80vh; border: 1px solid var(--color-line); border-radius: var(--radius-md); background: var(--color-tint); }
+.map-placeholder .hint { margin: 0; }
 .shops { display: grid; gap: var(--space-4); }
 .shops .card { margin-bottom: 0; }
 .why-grid { list-style: none; padding: 0; display: grid; gap: var(--space-4); }
@@ -280,6 +315,7 @@ function slotText(shop) {
 .landing-footer { border-top: 1px solid var(--color-line); padding: var(--space-5) 0 var(--space-4); color: var(--color-muted); font-size: var(--text-sm); max-width: 44rem; }
 
 @media (min-width: 720px) {
+  .map-placeholder { height: 30rem; }
   .hero { padding-top: var(--space-7); }
   .hero-motif { width: 26rem; top: 0; right: -2rem; }
   .search-actions { display: flex; }

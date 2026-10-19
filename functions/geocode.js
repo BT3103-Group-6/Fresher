@@ -4,6 +4,7 @@
 // the public demo deployment); elsewhere the call is unavailable (decisions
 // A11, A17, L12).
 const {HttpsError} = require("firebase-functions/https");
+const {sectorCentroid} = require("./postalSectors");
 
 const POSTAL = /^\d{6}$/;
 const ONEMAP_URL = "https://www.onemap.gov.sg/api/common/elastic/search";
@@ -60,7 +61,8 @@ const notFound = () => new HttpsError("not-found",
 
 /**
  * Looks up a postal code. Uses OneMap when a token is set. With no token the
- * mock table is used only where mocks are allowed; otherwise the lookup is
+ * mock table is used only where mocks are allowed (exact codes first, then
+ * the postal sector's approximate centroid); otherwise the lookup is
  * unavailable.
  * @param {*} data Callable request data.
  * @param {string} token OneMap token; empty means "no token".
@@ -78,8 +80,16 @@ async function geocode(data, token, fetchFn = fetch,
           "Postal code search is unavailable. Please try again.");
     }
     const hit = MOCK_POSTAL_CODES[code];
-    if (!hit) throw notFound();
-    return {...hit};
+    if (hit) return {...hit};
+    // Not an exact match: the centroid of the postal sector (first two
+    // digits), marked approximate. Only a sector that does not exist is
+    // not-found (decisions A18).
+    const sector = sectorCentroid(code);
+    if (!sector) throw notFound();
+    return {
+      lat: sector.lat, lng: sector.lng, approximate: true,
+      label: `${sector.name} area (approximate)`,
+    };
   }
   let body;
   try {

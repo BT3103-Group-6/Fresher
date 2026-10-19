@@ -1,0 +1,8 @@
+/* Dashboard helpers (UI-O2, A19); kept out of the shared stylesheet so the landing page does not load them: a loading placeholder (its shimmer stops under reduced motion) */
+.skeleton {
+  display: block; border-radius: var(--radius-sm); background: var(--color-neutral-bg);
+  background-image: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent);
+  background-size: 200% 100%; background-repeat: no-repeat; animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+

@@ -5,6 +5,7 @@ import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 
 const { geocode, parsePostalCode, pickResult, MOCK_POSTAL_CODES } = createRequire(import.meta.url)('../functions/geocode.js')
+const { SECTORS, sectorCentroid } = createRequire(import.meta.url)('../functions/postalSectors.js')
 
 const rejects = (fn, code) => {
   try {
@@ -44,11 +45,62 @@ describe('geocode without a token in the emulator (mock lookup)', () => {
     }
     assert.ok(Object.keys(MOCK_POSTAL_CODES).length > 4, 'covers a few areas beyond the seed shops')
   })
-  it('returns not-found for any other valid code', async () => {
+  it('returns not-found for a code in a sector that does not exist', async () => {
     await assert.rejects(geocode({ postalCode: '999999' }, '', neverFetch, true), (e) => e.code === 'not-found' && e.details.field === 'postalCode')
   })
   it('validates before looking anything up', async () => {
     await assert.rejects(geocode({ postalCode: '12' }, '', neverFetch, true), (e) => e.code === 'invalid-argument')
+  })
+})
+
+describe('geocode postal-sector fallback (A18)', () => {
+  const neverFetch = () => assert.fail('must not call OneMap without a token')
+  const look = (postalCode, emulator = true) => geocode({ postalCode }, '', neverFetch, emulator)
+  const km = (a, b) => Math.hypot((a.lat - b.lat) * 111.2, (a.lng - b.lng) * 111.2 * Math.cos((a.lat * Math.PI) / 180))
+
+  it('tries the exact table first, and exact results carry no approximate flag', async () => {
+    const out = await look('160055')
+    assert.deepEqual(out, { ...MOCK_POSTAL_CODES['160055'] })
+    assert.equal('approximate' in out, false)
+    assert.equal((await look('819663')).label, 'Changi Airport')
+  })
+  it('falls back to the sector centroid, marked approximate and labelled as such', async () => {
+    const out = await look('570123') // Bishan, not in the exact table
+    assert.equal(out.approximate, true)
+    assert.match(out.label, /approximate/i)
+    assert.match(out.label, /Bishan/)
+    const c = sectorCentroid('570123')
+    assert.deepEqual([out.lat, out.lng], [c.lat, c.lng])
+    assert.deepEqual(Object.keys(out).sort(), ['approximate', 'label', 'lat', 'lng'])
+  })
+  it('gives every valid sector (01 to 82, except 74) a result, and nothing else', async () => {
+    const valid = []
+    for (let n = 0; n <= 99; n++) valid.push(String(n).padStart(2, '0'))
+    for (const sector of valid) {
+      const code = `${sector}1234`
+      const should = Number(sector) >= 1 && Number(sector) <= 82 && sector !== '74'
+      if (should) {
+        const out = await look(code)
+        assert.ok(Number.isFinite(out.lat) && Number.isFinite(out.lng), sector)
+      } else {
+        await assert.rejects(look(code), (e) => e.code === 'not-found' && e.details.field === 'postalCode', sector)
+      }
+    }
+    assert.equal(Object.keys(SECTORS).length, 81)
+  })
+  it('puts every centroid inside Singapore and keeps the sectors of the sample shops near their coordinates', () => {
+    for (const [sector, [name, lat, lng]] of Object.entries(SECTORS)) {
+      assert.ok(name && lat > 1.2 && lat < 1.48 && lng > 103.6 && lng < 104.05, sector)
+    }
+    for (const code of ['160055', '520478', '600135', '579804']) {
+      assert.ok(km(MOCK_POSTAL_CODES[code], sectorCentroid(code)) < 2.5, `${code} is within about 2 km of its sector centroid`)
+    }
+  })
+  it('still validates input and never leaks past the mock modes', async () => {
+    await assert.rejects(look('12'), (e) => e.code === 'invalid-argument')
+    await assert.rejects(look('570123', false), (e) => e.code === 'unavailable' && !e.details) // no mock data outside emulator or demo mode
+    const withToken = await geocode({ postalCode: '570123' }, 't', async () => ({ ok: true, json: async () => ({ results: [{ POSTAL: '570123', LATITUDE: '1.5', LONGITUDE: '103.9', ADDRESS: 'X' }] }) }), false)
+    assert.deepEqual(withToken, { lat: 1.5, lng: 103.9, label: 'X' }) // OneMap behaviour unchanged, no approximation
   })
 })
 
