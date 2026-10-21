@@ -1,0 +1,158 @@
+# Code owners for Fresher, generated from the Scrum workbook story owners (see docs/team-plan.md, section 2).
+# Replace the placeholder handles with GitHub usernames; every owner needs write access to the repository.
+#   Haziq @haziqnoorazmi (taken from the origin URL; check it) | Alson @alson-github | K-Rei @krei-github
+#   Francis @francis-github | Firas @firas-github
+# The last matching pattern wins. A line with several owners means any ONE of them can approve; the
+# first owner is the story owner, the others own stories that also live in that file (flagged ⚑ in the plan).
+
+# Default and repository setup (Haziq, setup story)
+*                                                  @haziqnoorazmi
+
+/docs/                                             @haziqnoorazmi
+/docs/deployment.md                                @haziqnoorazmi @alson-github
+/README.md                                         @haziqnoorazmi
+/CLAUDE.md                                         @haziqnoorazmi
+/.github/                                          @haziqnoorazmi
+/.agents/                                          @haziqnoorazmi
+/.claude/                                          @haziqnoorazmi
+/skills-lock.json                                  @haziqnoorazmi
+/.vscode/                                          @haziqnoorazmi
+/.firebase/                                        @haziqnoorazmi
+/.gitignore                                        @haziqnoorazmi
+
+# Haziq
+/package.json                                      @haziqnoorazmi
+/package-lock.json                                 @haziqnoorazmi
+/vite.config.js                                    @haziqnoorazmi @firas-github
+/jsconfig.json                                     @haziqnoorazmi
+/index.html                                        @haziqnoorazmi
+/firebase.json                                     @haziqnoorazmi
+/.firebaserc                                       @haziqnoorazmi
+/firestore.indexes.json                            @haziqnoorazmi @alson-github @krei-github @francis-github
+/.env.example                                      @haziqnoorazmi
+/.env.production                                   @haziqnoorazmi @alson-github
+/public/                                           @haziqnoorazmi
+/functions/package.json                            @haziqnoorazmi
+/functions/package-lock.json                       @haziqnoorazmi
+/functions/.eslintrc.js                            @haziqnoorazmi
+/functions/.gitignore                              @haziqnoorazmi
+/functions/index.js                                @haziqnoorazmi @alson-github @krei-github @francis-github @firas-github
+/functions/demo.js                                 @haziqnoorazmi @alson-github
+/src/main.js                                       @haziqnoorazmi
+/src/App.vue                                       @haziqnoorazmi
+/src/router/index.js                               @haziqnoorazmi @alson-github @krei-github @francis-github @firas-github
+/src/firebase.js                                   @haziqnoorazmi
+/src/firebaseApp.js                                @haziqnoorazmi @alson-github
+/src/firebaseAuth.js                               @haziqnoorazmi
+/src/firebaseDb.js                                 @haziqnoorazmi
+/src/firebaseFunctions.js                          @haziqnoorazmi
+/src/stores/session.js                             @haziqnoorazmi @firas-github
+/src/views/staff/SignInView.vue                    @haziqnoorazmi
+/src/lib/demo.js                                   @haziqnoorazmi @alson-github
+/functions/booking.js                              @haziqnoorazmi @alson-github @krei-github @francis-github @firas-github
+/src/lib/slots.js                                  @haziqnoorazmi
+/src/stores/booking.js                             @haziqnoorazmi @krei-github
+/src/views/customer/ShopView.vue                   @haziqnoorazmi @firas-github
+/tests/slots.test.mjs                              @haziqnoorazmi
+/src/views/customer/VerifyView.vue                 @haziqnoorazmi @krei-github @francis-github @firas-github
+/src/lib/customerAuth.js                           @haziqnoorazmi
+/tests/concurrency.test.mjs                        @haziqnoorazmi @alson-github @krei-github @francis-github
+/tests/demo.unit.test.mjs                          @haziqnoorazmi @alson-github
+
+# Alson
+/firestore.rules                                   @alson-github @haziqnoorazmi @krei-github @francis-github @firas-github
+/tests/rules.test.mjs                              @alson-github @krei-github @francis-github @firas-github
+/functions/notifications.js                        @alson-github @krei-github
+/functions/messaging.js                            @alson-github
+/tests/notifications.unit.test.mjs                 @alson-github
+/src/views/customer/MyBookingsView.vue             @alson-github @krei-github @francis-github @firas-github
+/functions/queue.js                                @alson-github
+/functions/queueDelay.js                           @alson-github
+/src/views/staff/QueueView.vue                     @alson-github @francis-github
+/src/lib/queue.js                                  @alson-github
+/scripts/seed-fr10.mjs                             @alson-github
+/tests/queue.unit.test.mjs                         @alson-github
+/functions/sweep.js                                @alson-github @krei-github @francis-github
+/scripts/sweep.mjs                                 @alson-github
+/scripts/backfill-notifications.mjs                @alson-github
+/tests/notifications.emulator.test.mjs             @alson-github
+/tests/queue.emulator.test.mjs                     @alson-github
+
+# K-Rei
+/src/views/customer/DiscoverView.vue               @krei-github @firas-github
+/src/components/ShopMapSection.vue                 @krei-github
+/src/lib/discovery.js                              @krei-github
+/src/lib/discoveryData.js                          @krei-github @firas-github
+/src/lib/googleMap.js                              @krei-github
+/src/lib/regions.js                                @krei-github
+/src/lib/shopMap.js                                @krei-github
+/src/lib/shopMapData.js                            @krei-github @firas-github
+/src/lib/serviceTypes.js                           @krei-github @francis-github
+/src/stores/discover.js                            @krei-github
+/functions/geocode.js                              @krei-github
+/functions/postalSectors.js                        @krei-github
+/functions/discovery.js                            @krei-github @francis-github
+/tests/discovery.test.mjs                          @krei-github
+/tests/geocode.unit.test.mjs                       @krei-github
+/tests/shopMap.test.mjs                            @krei-github
+/tests/booking.unit.test.mjs                       @krei-github @alson-github
+/src/views/customer/WaitlistView.vue               @krei-github
+/src/lib/waitlist.js                               @krei-github
+/functions/waitlist.js                             @krei-github @francis-github
+/tests/waitlist.unit.test.mjs                      @krei-github
+/tests/waitlist.emulator.test.mjs                  @krei-github @francis-github
+/tests/waitlistUi.test.mjs                         @krei-github
+
+# Francis
+/src/views/staff/ShopConfigView.vue                @francis-github @firas-github
+/src/views/staff/ServiceForm.vue                   @francis-github
+/src/views/customer/DepositView.vue                @francis-github
+/src/lib/deposit.js                                @francis-github
+/functions/payments.js                             @francis-github
+/scripts/seed-fr13.mjs                             @francis-github
+/tests/deposit.test.mjs                            @francis-github
+/tests/payments.unit.test.mjs                      @francis-github
+/src/views/staff/ScheduleView.vue                  @francis-github @alson-github
+/src/lib/schedule.js                               @francis-github
+/functions/blocks.js                               @francis-github
+/tests/blocks.unit.test.mjs                        @francis-github
+/tests/schedule.test.mjs                           @francis-github
+/functions/service.js                              @francis-github @alson-github
+/scripts/seed-fr12.mjs                             @francis-github
+/tests/service.unit.test.mjs                       @francis-github
+/functions/stats.js                                @francis-github
+/src/views/staff/DashboardView.vue                 @francis-github
+/src/components/dashboard/                         @francis-github
+/src/lib/dashboard.js                              @francis-github
+/src/lib/dashboardCharts.js                        @francis-github
+/src/lib/chartConfigs.js                           @francis-github
+/src/lib/chartSetup.js                             @francis-github
+/scripts/backfill-stats.mjs                        @francis-github
+/tests/stats.unit.test.mjs                         @francis-github
+/tests/stats.trigger.test.mjs                      @francis-github
+/tests/dashboard.test.mjs                          @francis-github
+/tests/dashboardCharts.test.mjs                    @francis-github
+/tests/payments.emulator.test.mjs                  @francis-github @alson-github
+
+# Firas
+/src/assets/design-system.css                      @firas-github
+/src/assets/base.css                               @firas-github
+/src/assets/main.css                               @firas-github @francis-github
+/src/assets/logo.svg                               @firas-github
+/src/components/CustomerHeader.vue                 @firas-github
+/src/components/StaffHeader.vue                    @firas-github
+/src/components/FresherLogo.vue                    @firas-github
+/src/components/CombMotif.vue                      @firas-github @krei-github
+/src/components/HelloWorld.vue                     @firas-github
+/src/components/TheWelcome.vue                     @firas-github
+/src/components/WelcomeItem.vue                    @firas-github
+/src/components/icons/                             @firas-github
+/src/lib/history.js                                @firas-github @francis-github
+/tests/history.test.mjs                            @firas-github @francis-github
+/src/views/staff/BarberForm.vue                    @firas-github
+/scripts/seed.mjs                                  @firas-github @francis-github
+/scripts/demo/                                     @firas-github @francis-github
+/tests/demoData.unit.test.mjs                      @firas-github
+
+# More specific than /scripts/demo/ above, so it must come last
+/scripts/demo/catalogue.mjs                        @firas-github @krei-github
