@@ -1,0 +1,269 @@
+/*
+ * Fresher design system (decision A14): tokens and shared component styles.
+ * Screen layout rules live in main.css and use only these tokens.
+ *
+ * WCAG contrast (2.x relative luminance). Text needs 4.5:1 (AA); form-field
+ * borders and focus rings need 3:1 (1.4.11).
+ *
+ *   Text pair                                   Ratio
+ *   --color-text    #1E2B2A on background #F6F8F7   13.73
+ *   --color-text    #1E2B2A on surface    #FFFFFF   14.64
+ *   --color-text    #1E2B2A on tint       #DCEEEA   12.17
+ *   --color-text    #1E2B2A on tint-strong #C6E2DC  10.68
+ *   --color-muted   #4A5A58 on background #F6F8F7    6.80
+ *   --color-muted   #4A5A58 on surface    #FFFFFF    7.26
+ *   --color-muted   #4A5A58 on tint       #DCEEEA    6.03
+ *   --color-muted   #4A5A58 on neutral-bg #E6EBEA    6.02
+ *   white           #FFFFFF on accent     #1D5E5A    7.50  (primary button)
+ *   white           #FFFFFF on accent-dark #154744  10.41  (button hover)
+ *   --color-accent  #1D5E5A on surface    #FFFFFF    7.50  (links, secondary button)
+ *   --color-accent  #1D5E5A on background #F6F8F7    7.03
+ *   --color-accent  #1D5E5A on tint       #DCEEEA    6.23  (secondary hover)
+ *   accent-dark     #154744 on tint       #DCEEEA    8.66  (badge)
+ *   accent-dark     #154744 on tint-strong #C6E2DC   7.59
+ *   success-fg      #1B5E36 on success-bg #DFF2E5    6.65
+ *   success-fg      #1B5E36 on surface    #FFFFFF    7.78
+ *   warning-fg      #6B4200 on warning-bg #FCEBC5    7.41
+ *   warning-fg      #6B4200 on surface    #FFFFFF    8.73
+ *   danger-fg       #A3261F on danger-bg  #FBE3E0    6.01
+ *   danger-fg       #A3261F on surface    #FFFFFF    7.36  (error text)
+ *   danger-fg       #A3261F on background #F6F8F7    6.90
+ *   neutral-fg      #3F4E4C on neutral-bg #E6EBEA    7.25  (badge "off")
+ *
+ *   Non-text pair (3:1)
+ *   --color-field-border #6B7C7A on surface    #FFFFFF  4.38
+ *   --color-field-border #6B7C7A on background #F6F8F7  4.11
+ *   --color-focus        #0D3B38 on background #F6F8F7 11.58
+ *   --color-focus        #0D3B38 on surface    #FFFFFF 12.35
+ *   The focus ring sits 2px outside its control, so it is always drawn on the
+ *   page background, never on the accent fill.
+ *   Hero wash (--gradient-hero): its darkest pixel is the teal glow centre #DCEEEA
+ *   (= --color-tint), so the tint rows above are the worst case: muted 6.03,
+ *   accent 6.23, text 12.17. Mint #EAF5F2 and warm #FBFCFA are lighter, so
+ *   every text colour has more contrast there than on the tint.
+ *   Chart colours (UI-O2, decision A19), non-text 3:1 against white:
+ *   --chart-primary  #1D5E5A  7.50  (lightness L* 36; completed bars, utilisation bars)
+ *   --chart-noshow   #8A5200  6.39  (L* 40; outline and hatching of no-show bars)
+ *   --chart-noshow-fill #F6D48A (L* 86, light: the no-show bar reads much lighter than the teal bar, and is hatched)
+ *   --chart-line     #1E2B2A 14.64  (L* 16; booked value line, with a white halo where it crosses bars)
+ *   Stripe #8A5200 on fill #F6D48A is 4.47; teal beside the fill is 5.25.
+ *   --color-line #D3DCDA (1.40 on white) is decorative only (card and list
+ *   outlines); nothing depends on it to be understood.
+ */
+@import '@fontsource-variable/manrope';
+
+:root {
+  /* Colour */
+  --color-accent: #1d5e5a;
+  --color-accent-dark: #154744;
+  --color-tint: #dceeea;
+  --color-tint-strong: #c6e2dc;
+  --color-hero-glow-mint: #eaf5f2;
+  --color-hero-glow-teal: #dceeea;
+  --color-hero-glow-warm: #fbfcfa;
+  --hero-wash-height: 42rem;
+  --gradient-hero:
+    radial-gradient(ellipse 34rem 22rem at 8% 8rem, var(--color-hero-glow-mint) 0%, transparent 72%),
+    radial-gradient(ellipse 30rem 24rem at 94% 20rem, var(--color-hero-glow-teal) 0%, transparent 74%),
+    radial-gradient(ellipse 26rem 18rem at 56% 4rem, var(--color-hero-glow-warm) 0%, transparent 76%),
+    linear-gradient(to bottom, var(--color-hero-glow-warm) 0%, var(--color-background) 100%);
+  --color-text: #1e2b2a;
+  --color-muted: #4a5a58;
+  --color-background: #f6f8f7;
+  --color-surface: #ffffff;
+  --color-line: #d3dcda;
+  --color-field-border: #6b7c7a;
+  --color-focus: #0d3b38;
+
+  --color-success-fg: #1b5e36;
+  --color-success-bg: #dff2e5;
+  --color-warning-fg: #6b4200;
+  --color-warning-bg: #fcebc5;
+  --color-danger-fg: #a3261f;
+  --color-danger-bg: #fbe3e0;
+  --color-neutral-fg: #3f4e4c;
+  --color-neutral-bg: #e6ebea;
+  --chart-primary: #1d5e5a;
+  --chart-noshow: #8a5200;
+  --chart-noshow-fill: #f6d48a;
+  --chart-line: #1e2b2a;
+
+  /* Typography */
+  --font-sans: 'Manrope Variable', Manrope, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  --text-xs: 0.8rem;
+  --text-sm: 0.9rem;
+  --text-base: 1rem;
+  --text-lg: 1.15rem;
+  --text-xl: 1.5rem;
+  --leading: 1.5;
+
+  /* Spacing scale (4px steps) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+
+  /* Radius and elevation */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+  --shadow-card: 0 1px 2px rgba(30, 43, 42, 0.06), 0 1px 3px rgba(30, 43, 42, 0.05);
+  /* Raised cards (forms, search): soft and tight, the negative spread keeps it from showing a box edge at the sides */
+  --shadow-raised: 0 1px 2px rgba(30, 43, 42, 0.05), 0 10px 24px -14px rgba(30, 43, 42, 0.18);
+
+  --tap-target: 44px;
+
+  /* Page container: header, landing sections and every screen share this width and left edge */
+  --container-max: 1180px;
+  --gutter: clamp(1rem, 4vw, 2rem);
+  --content-narrow: 48rem;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--color-background);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Soft hero wash on every page (also usable on any full-width block via `.hero-wash`).
+   Painted only in the top --hero-wash-height; every layer is transparent or --color-background by then. */
+.hero-wash,
+body {
+  background-color: var(--color-background);
+  background-image: var(--gradient-hero);
+  background-repeat: no-repeat;
+  background-size: 100% var(--hero-wash-height);
+}
+
+h1, h2, h3 { font-weight: 800; line-height: 1.25; letter-spacing: -0.01em; }
+h1 { font-size: var(--text-xl); margin: 0 0 var(--space-4); }
+h2 { font-size: var(--text-lg); margin: 0 0 var(--space-3); }
+strong, th, dt, legend, label { font-weight: 700; }
+
+a { color: var(--color-accent); }
+
+/* Focus ring: one rule for every interactive element */
+:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* Section motif above headings: exactly four whole stripes (39x12 viewBox), nothing clipped */
+.comb-rule {
+  width: 3.25rem;
+  height: 1rem;
+  margin-bottom: var(--space-3);
+  opacity: 0.6;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 39 12'%3E%3Cg fill='%231D5E5A'%3E%3Cpath d='M3 0h3l-3 12H0z'/%3E%3Cpath d='M14 0h3l-3 12h-3z'/%3E%3Cpath d='M25 0h3l-3 12h-3z'/%3E%3Cpath d='M36 0h3l-3 12h-3z'/%3E%3C/g%3E%3C/svg%3E") no-repeat left center / 100% 100%;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  font: inherit;
+  font-weight: 700;
+  min-height: var(--tap-target);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-surface);
+  cursor: pointer;
+  text-decoration: none;
+}
+.btn:hover:not(:disabled) { background: var(--color-accent-dark); border-color: var(--color-accent-dark); }
+.btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn.secondary { background: var(--color-surface); color: var(--color-accent); }
+.btn.secondary:hover:not(:disabled) { background: var(--color-tint); border-color: var(--color-accent); }
+.btn.danger { background: var(--color-danger-fg); border-color: var(--color-danger-fg); color: var(--color-surface); }
+.btn.danger:hover:not(:disabled) { background: #7f1d17; border-color: #7f1d17; }
+
+/* Cards */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+/* Badges: always carry a text label */
+.badge {
+  display: inline-block;
+  padding: 0.1rem var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  background: var(--color-tint);
+  color: var(--color-accent-dark);
+}
+.badge.ok { background: var(--color-success-bg); color: var(--color-success-fg); }
+.badge.warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+.badge.danger { background: var(--color-danger-bg); color: var(--color-danger-fg); }
+.badge.off { background: var(--color-neutral-bg); color: var(--color-neutral-fg); }
+
+/* Banners (message boxes) */
+.banner {
+  padding: var(--space-3);
+  border: 1px solid var(--color-danger-fg);
+  border-radius: var(--radius-md);
+  background: var(--color-danger-bg);
+  color: var(--color-danger-fg);
+  margin-bottom: var(--space-4);
+}
+.banner.info { border-color: var(--color-warning-fg); background: var(--color-warning-bg); color: var(--color-warning-fg); }
+.banner.success { border-color: var(--color-success-fg); background: var(--color-success-bg); color: var(--color-success-fg); }
+
+/* Form fields */
+.field { display: flex; flex-direction: column; gap: var(--space-1); margin-bottom: var(--space-3); }
+.hint { font-size: var(--text-sm); color: var(--color-muted); }
+.error { color: var(--color-danger-fg); font-size: var(--text-sm); font-weight: 600; }
+
+input[type='text'],
+input[type='tel'],
+input[type='email'],
+input[type='password'],
+input[type='number'],
+input[type='time'],
+input[type='date'],
+select,
+textarea {
+  font: inherit;
+  padding: var(--space-2) var(--space-3);
+  min-height: var(--tap-target);
+  border: 1px solid var(--color-field-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+input::placeholder, textarea::placeholder { color: var(--color-muted); opacity: 1; }
+input[aria-invalid='true'], select[aria-invalid='true'], textarea[aria-invalid='true'] {
+  border-color: var(--color-danger-fg);
+  border-width: 2px;
+}
+input:disabled, select:disabled, textarea:disabled { background: var(--color-neutral-bg); color: var(--color-muted); }
+input[type='checkbox'], input[type='radio'] { accent-color: var(--color-accent); width: 1.1rem; height: 1.1rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

@@ -1,37 +1,41 @@
 {
-  "name": "fresher",
+  "name": "fresher-project",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "seed": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 node scripts/seed.mjs",
+    "backfill:stats": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node scripts/backfill-stats.mjs",
+    "backfill:notifications": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node scripts/backfill-notifications.mjs",
+    "seed:live": "node scripts/seed.mjs --live",
+    "seed:fr13": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 node scripts/seed-fr13.mjs",
+    "demo:dry-run": "node scripts/demo/dry-run.mjs",
+    "sweep": "node scripts/sweep.mjs",
+    "seed:fr10": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node scripts/seed-fr10.mjs",
+    "seed:fr12": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node scripts/seed-fr12.mjs",
+    "test:rules": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node --test tests/rules.test.mjs tests/slots.test.mjs tests/booking.unit.test.mjs tests/discovery.test.mjs tests/geocode.unit.test.mjs tests/demo.unit.test.mjs tests/demoData.unit.test.mjs tests/blocks.unit.test.mjs tests/schedule.test.mjs tests/service.unit.test.mjs tests/history.test.mjs tests/stats.unit.test.mjs tests/stats.trigger.test.mjs tests/dashboard.test.mjs tests/dashboardCharts.test.mjs tests/notifications.unit.test.mjs tests/notifications.emulator.test.mjs tests/deposit.test.mjs tests/payments.unit.test.mjs tests/payments.emulator.test.mjs tests/waitlistUi.test.mjs tests/waitlist.unit.test.mjs tests/waitlist.emulator.test.mjs tests/queue.unit.test.mjs tests/queue.emulator.test.mjs tests/shopMap.test.mjs",
+    "test:concurrency": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 node --test tests/concurrency.test.mjs"
   },
   "dependencies": {
-    "vue": "rc"
+    "@fontsource-variable/manrope": "^5.3.0",
+    "@googlemaps/markerclusterer": "^2.6.2",
+    "chart.js": "^4.5.1",
+    "firebase": "^12.19.0",
+    "geofire-common": "^6.0.0",
+    "vue": "^3.5.42",
+    "vue-router": "^4.6.4"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
     "@vitejs/plugin-vue": "^6.0.8",
+    "firebase-admin": "^14.5.0",
     "vite": "^8.2.2",
     "vite-plugin-vue-devtools": "^8.2.1"
   },
   "engines": {
     "node": "^22.18.0 || >=24.12.0"
-  },
-  "overrides": {
-    "vue": "rc",
-    "@vue/compiler-core": "rc",
-    "@vue/compiler-dom": "rc",
-    "@vue/compiler-sfc": "rc",
-    "@vue/compiler-ssr": "rc",
-    "@vue/compiler-vapor": "rc",
-    "@vue/reactivity": "rc",
-    "@vue/runtime-core": "rc",
-    "@vue/runtime-dom": "rc",
-    "@vue/runtime-vapor": "rc",
-    "@vue/server-renderer": "rc",
-    "@vue/shared": "rc",
-    "@vue/compat": "rc"
   }
 }
