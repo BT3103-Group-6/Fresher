@@ -18,7 +18,7 @@ const router = createRouter({
     { path: '/staff/schedule', name: 'schedule', component: () => import('@/views/staff/SignInView.vue') },
     { path: '/staff/queue', name: 'queue', component: () => import('@/views/staff/SignInView.vue') },
     { path: '/staff/dashboard', name: 'dashboard', component: () => import('@/views/staff/SignInView.vue') },
-    { path: '/staff/config', name: 'shop-config', component: () => import('@/views/staff/SignInView.vue') },
+    { path: '/staff/config', name: 'shop-config', component: () => import('@/views/staff/ShopConfigView.vue'), meta: { requiresOwner: true }, },
   ],
 })
 
