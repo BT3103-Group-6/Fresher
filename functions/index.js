@@ -125,3 +125,11 @@ exports.addBarber = onCall(APP_CHECK, async (request) => {
 
   return {barberId: barberRef.id};
 });
+
+// FR-02/FR-03: customer booking. holdSlot and releaseHold are unauthenticated
+// (the OTP comes after the hold); confirmBooking needs Phone Auth.
+const booking = require("./booking");
+exports.holdSlot =
+  onCall(APP_CHECK, (request) => booking.holdSlot(request.data || {}));
+exports.releaseHold =
+  onCall(APP_CHECK, (request) => booking.releaseHold(request.data || {}));
