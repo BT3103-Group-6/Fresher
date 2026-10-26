@@ -14,11 +14,16 @@ const router = createRouter({
     // Integration stubs (replaced story by story): the shared headers link to these named routes, so until
     // the PR that brings in each screen replaces its stub with the real route, it shows the sign-in page.
     { path: '/', name: 'discover', component: () => import('@/views/staff/SignInView.vue') },
+    // Customer booking (FR-02, FR-03). No sign-in needed until the OTP step.
+    { path: '/shops/:shopId', name: 'book', component: () => import('@/views/customer/ShopView.vue') },
+    // Stubs until their PRs: ShopView links to these (book-verify: PR-08, waitlist: PR-16).
+    { path: '/shops/:shopId/verify', name: 'book-verify', component: () => import('@/views/staff/SignInView.vue') },
+    { path: '/waitlist', name: 'waitlist', component: () => import('@/views/staff/SignInView.vue') },
     { path: '/my-bookings', name: 'my-bookings', component: () => import('@/views/staff/SignInView.vue') },
     { path: '/staff/schedule', name: 'schedule', component: () => import('@/views/staff/SignInView.vue') },
     { path: '/staff/queue', name: 'queue', component: () => import('@/views/staff/SignInView.vue') },
     { path: '/staff/dashboard', name: 'dashboard', component: () => import('@/views/staff/SignInView.vue') },
-    { path: '/staff/config', name: 'shop-config', component: () => import('@/views/staff/SignInView.vue') },
+    { path: '/staff/config', name: 'shop-config', component: () => import('@/views/staff/ShopConfigView.vue'), meta: { requiresOwner: true }, },
   ],
 })
 
