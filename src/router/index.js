@@ -20,8 +20,9 @@ const router = createRouter({
     { path: '/shops/:shopId/verify', name: 'book-verify', component: () => import('@/views/staff/SignInView.vue') },
     { path: '/waitlist', name: 'waitlist', component: () => import('@/views/staff/SignInView.vue') },
     { path: '/my-bookings', name: 'my-bookings', component: () => import('@/views/staff/SignInView.vue') },
+    // Barber schedule (FR-08): barbers see their own day, owners pick any barber in their shop.
     { path: '/staff/schedule', name: 'schedule', component: () => import('@/views/staff/SignInView.vue') },
-    { path: '/staff/queue', name: 'queue', component: () => import('@/views/staff/SignInView.vue') },
+    { path: '/staff/queue', name: 'queue', component: () => import('@/views/staff/ScheduleView.vue') },
     { path: '/staff/dashboard', name: 'dashboard', component: () => import('@/views/staff/SignInView.vue') },
     { path: '/staff/config', name: 'shop-config', component: () => import('@/views/staff/ShopConfigView.vue'), meta: { requiresOwner: true }, },
   ],
