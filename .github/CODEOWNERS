@@ -1,6 +1,6 @@
 # Code owners for Fresher, generated from the Scrum workbook story owners (see docs/team-plan.md, section 2).
 # Replace the placeholder handles with GitHub usernames; every owner needs write access to the repository.
-#   Haziq @haziqnoorazmi (taken from the origin URL; check it) | Alson @A140904 | K-Rei @krei-github
+#   Haziq @haziqnoorazmi (taken from the origin URL; check it) | Alson @A140904 | K-Rei @teok-rei
 #   Francis @francisgoonws | Firas @mofiras123
 # The last matching pattern wins. A line with several owners means any ONE of them can approve; the
 # first owner is the story owner, the others own stories that also live in that file (flagged ⚑ in the plan).
@@ -28,7 +28,7 @@
 /index.html                                        @haziqnoorazmi
 /firebase.json                                     @haziqnoorazmi
 /.firebaserc                                       @haziqnoorazmi
-/firestore.indexes.json                            @haziqnoorazmi @A140904 @krei-github @francisgoonws
+/firestore.indexes.json                            @haziqnoorazmi @A140904 @teok-rei @francisgoonws
 /.env.example                                      @haziqnoorazmi
 /.env.production                                   @haziqnoorazmi @A140904
 /public/                                           @haziqnoorazmi
@@ -36,11 +36,11 @@
 /functions/package-lock.json                       @haziqnoorazmi
 /functions/.eslintrc.js                            @haziqnoorazmi
 /functions/.gitignore                              @haziqnoorazmi
-/functions/index.js                                @haziqnoorazmi @A140904 @krei-github @francisgoonws @mofiras123
+/functions/index.js                                @haziqnoorazmi @A140904 @teok-rei @francisgoonws @mofiras123
 /functions/demo.js                                 @haziqnoorazmi @A140904
 /src/main.js                                       @haziqnoorazmi
 /src/App.vue                                       @haziqnoorazmi
-/src/router/index.js                               @haziqnoorazmi @A140904 @krei-github @francisgoonws @mofiras123
+/src/router/index.js                               @haziqnoorazmi @A140904 @teok-rei @francisgoonws @mofiras123
 /src/firebase.js                                   @haziqnoorazmi
 /src/firebaseApp.js                                @haziqnoorazmi @A140904
 /src/firebaseAuth.js                               @haziqnoorazmi
@@ -49,59 +49,59 @@
 /src/stores/session.js                             @haziqnoorazmi @mofiras123
 /src/views/staff/SignInView.vue                    @haziqnoorazmi
 /src/lib/demo.js                                   @haziqnoorazmi @A140904
-/functions/booking.js                              @haziqnoorazmi @A140904 @krei-github @francisgoonws @mofiras123
+/functions/booking.js                              @haziqnoorazmi @A140904 @teok-rei @francisgoonws @mofiras123
 /src/lib/slots.js                                  @haziqnoorazmi
-/src/stores/booking.js                             @haziqnoorazmi @krei-github
+/src/stores/booking.js                             @haziqnoorazmi @teok-rei
 /src/views/customer/ShopView.vue                   @haziqnoorazmi @mofiras123
 /tests/slots.test.mjs                              @haziqnoorazmi
-/src/views/customer/VerifyView.vue                 @haziqnoorazmi @krei-github @francisgoonws @mofiras123
+/src/views/customer/VerifyView.vue                 @haziqnoorazmi @teok-rei @francisgoonws @mofiras123
 /src/lib/customerAuth.js                           @haziqnoorazmi
-/tests/concurrency.test.mjs                        @haziqnoorazmi @A140904 @krei-github @francisgoonws
+/tests/concurrency.test.mjs                        @haziqnoorazmi @A140904 @teok-rei @francisgoonws
 /tests/demo.unit.test.mjs                          @haziqnoorazmi @A140904
 
 # Alson
-/firestore.rules                                   @A140904 @haziqnoorazmi @krei-github @francisgoonws @mofiras123
-/tests/rules.test.mjs                              @A140904 @krei-github @francisgoonws @mofiras123
-/functions/notifications.js                        @A140904 @krei-github
+/firestore.rules                                   @A140904 @haziqnoorazmi @teok-rei @francisgoonws @mofiras123
+/tests/rules.test.mjs                              @A140904 @teok-rei @francisgoonws @mofiras123
+/functions/notifications.js                        @A140904 @teok-rei
 /functions/messaging.js                            @A140904
 /tests/notifications.unit.test.mjs                 @A140904
-/src/views/customer/MyBookingsView.vue             @A140904 @krei-github @francisgoonws @mofiras123
+/src/views/customer/MyBookingsView.vue             @A140904 @teok-rei @francisgoonws @mofiras123
 /functions/queue.js                                @A140904
 /functions/queueDelay.js                           @A140904
 /src/views/staff/QueueView.vue                     @A140904 @francisgoonws
 /src/lib/queue.js                                  @A140904
 /scripts/seed-fr10.mjs                             @A140904
 /tests/queue.unit.test.mjs                         @A140904
-/functions/sweep.js                                @A140904 @krei-github @francisgoonws
+/functions/sweep.js                                @A140904 @teok-rei @francisgoonws
 /scripts/sweep.mjs                                 @A140904
 /scripts/backfill-notifications.mjs                @A140904
 /tests/notifications.emulator.test.mjs             @A140904
 /tests/queue.emulator.test.mjs                     @A140904
 
 # K-Rei
-/src/views/customer/DiscoverView.vue               @krei-github @mofiras123
-/src/components/ShopMapSection.vue                 @krei-github
-/src/lib/discovery.js                              @krei-github
-/src/lib/discoveryData.js                          @krei-github @mofiras123
-/src/lib/googleMap.js                              @krei-github
-/src/lib/regions.js                                @krei-github
-/src/lib/shopMap.js                                @krei-github
-/src/lib/shopMapData.js                            @krei-github @mofiras123
-/src/lib/serviceTypes.js                           @krei-github @francisgoonws
-/src/stores/discover.js                            @krei-github
-/functions/geocode.js                              @krei-github
-/functions/postalSectors.js                        @krei-github
-/functions/discovery.js                            @krei-github @francisgoonws
-/tests/discovery.test.mjs                          @krei-github
-/tests/geocode.unit.test.mjs                       @krei-github
-/tests/shopMap.test.mjs                            @krei-github
-/tests/booking.unit.test.mjs                       @krei-github @A140904
-/src/views/customer/WaitlistView.vue               @krei-github
-/src/lib/waitlist.js                               @krei-github
-/functions/waitlist.js                             @krei-github @francisgoonws
-/tests/waitlist.unit.test.mjs                      @krei-github
-/tests/waitlist.emulator.test.mjs                  @krei-github @francisgoonws
-/tests/waitlistUi.test.mjs                         @krei-github
+/src/views/customer/DiscoverView.vue               @teok-rei @mofiras123
+/src/components/ShopMapSection.vue                 @teok-rei
+/src/lib/discovery.js                              @teok-rei
+/src/lib/discoveryData.js                          @teok-rei @mofiras123
+/src/lib/googleMap.js                              @teok-rei
+/src/lib/regions.js                                @teok-rei
+/src/lib/shopMap.js                                @teok-rei
+/src/lib/shopMapData.js                            @teok-rei @mofiras123
+/src/lib/serviceTypes.js                           @teok-rei @francisgoonws
+/src/stores/discover.js                            @teok-rei
+/functions/geocode.js                              @teok-rei
+/functions/postalSectors.js                        @teok-rei
+/functions/discovery.js                            @teok-rei @francisgoonws
+/tests/discovery.test.mjs                          @teok-rei
+/tests/geocode.unit.test.mjs                       @teok-rei
+/tests/shopMap.test.mjs                            @teok-rei
+/tests/booking.unit.test.mjs                       @teok-rei @A140904
+/src/views/customer/WaitlistView.vue               @teok-rei
+/src/lib/waitlist.js                               @teok-rei
+/functions/waitlist.js                             @teok-rei @francisgoonws
+/tests/waitlist.unit.test.mjs                      @teok-rei
+/tests/waitlist.emulator.test.mjs                  @teok-rei @francisgoonws
+/tests/waitlistUi.test.mjs                         @teok-rei
 
 # Francis
 /src/views/staff/ShopConfigView.vue                @francisgoonws @mofiras123
@@ -142,7 +142,7 @@
 /src/components/CustomerHeader.vue                 @mofiras123
 /src/components/StaffHeader.vue                    @mofiras123
 /src/components/FresherLogo.vue                    @mofiras123
-/src/components/CombMotif.vue                      @mofiras123 @krei-github
+/src/components/CombMotif.vue                      @mofiras123 @teok-rei
 /src/components/HelloWorld.vue                     @mofiras123
 /src/components/TheWelcome.vue                     @mofiras123
 /src/components/WelcomeItem.vue                    @mofiras123
@@ -155,4 +155,4 @@
 /tests/demoData.unit.test.mjs                      @mofiras123
 
 # More specific than /scripts/demo/ above, so it must come last
-/scripts/demo/catalogue.mjs                        @mofiras123 @krei-github
+/scripts/demo/catalogue.mjs                        @mofiras123 @teok-rei
