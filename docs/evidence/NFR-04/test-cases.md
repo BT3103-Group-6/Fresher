@@ -3,6 +3,7 @@
 Each row is one attack: who tries it, what they try, what must happen, and the test that proves it.
 "Rules" tests are in `tests/rules.test.mjs` and run against the Firestore emulator
 (`node --test tests/rules.test.mjs`, 74 passed, 0 failed, 0 skipped on `main`, 22 Oct 2026).
+The NFR-04 additions are in `tests/nfr04.security.test.mjs` (rules) and `tests/nfr04.callables.test.mjs` (callables); see "New tests in this PR".
 Line numbers refer to that file on `main`.
 
 Actors in the tests: `customer('cust1')`, another customer `cust2`/`cust3`, `owner('a')`, `barber('a', 'b1')`,
@@ -25,7 +26,7 @@ staff of another shop `owner('b')`/`barber('b')`, platform `admin()`, and signed
 | S-11 | Customer | Read another customer's no-show and late-cancel counts (`shopStats`), or reset their own | Denied | Rules L309 "a customer reads only their own shopStats and cannot write them"; L349 (noShowCount) |
 | S-12 | Customer, signed-out user | Read a HELD slot that has no customer yet | Denied | Rules L238 "keeps a HELD appointment (no customer yet) unreadable to customers and anonymous users" |
 | S-13 | Customer | Read reminder tasks (`notifications`) | Denied | Rules L175 "scopes audit log and notifications to the shop" |
-| S-14 | Customer | Cancel or reschedule another customer's booking through the `cancelBooking`/`reschedule` callable | Refused (`permission-denied`) | **Missing** (callable, not rules; the functions arrive in PR-10) |
+| S-14 | Customer | Cancel or reschedule another customer's booking through the `cancelBooking`/`reschedule` callable | Refused with `not-found` (`BOOKING_NOT_FOUND`), the same answer as for a booking that does not exist, so the caller cannot learn that it exists. A stale sign-in is refused first with `permission-denied` (fresh OTP, decisions A3) | **Pending PR-10** (callable, not rules; `cancelBooking`/`reschedule` are not on `main` yet) |
 
 ## 2. Staff of one shop and another shop's data
 
@@ -50,10 +51,10 @@ staff of another shop `owner('b')`/`barber('b')`, platform `admin()`, and signed
 | S-31 | Barber | List a collection without limiting it to their own `barberId` | Denied | Rules L138, L201, L226, L232, L526 |
 | S-32 | Barber | Read the owner dashboard (`dailyStats`) | Denied | Rules L72 |
 | S-33 | Barber | Create a service | Denied | Rules L376 "owner writes valid services in own shop only" |
-| S-34 | Barber | Deactivate or edit an existing service | Denied | **Missing** (L376 covers create only) |
+| S-34 | Barber | Deactivate, edit or delete an existing service | Denied | `tests/nfr04.security.test.mjs` "a barber cannot edit, deactivate or delete an existing service in their own shop" |
 | S-35 | Barber | Edit or deactivate a barber (themselves or another) | Denied | Rules L408 "owner edits and deactivates barbers in own shop only" |
-| S-36 | Barber | Edit the shop profile (name, notice window) | Denied | **Missing** (L437 tests only the summary fields for a barber) |
-| S-37 | Barber | Create a barber login through the `addBarber` callable | Refused (`permission-denied`) | **Missing** (callable, not rules; `addBarber` arrives in PR-07) |
+| S-36 | Barber | Edit the shop profile (name, notice window) | Denied | `tests/nfr04.security.test.mjs` "a barber cannot edit their own shop's profile" |
+| S-37 | Barber, customer, admin, signed-out caller | Create a barber login through the `addBarber` callable | Refused: `permission-denied` (signed in, not an owner) or `unauthenticated` (signed out) | `tests/nfr04.callables.test.mjs` "addBarber is owner-only (S-37)" (3 tests) |
 | S-38 | Owner or barber | Create or delete a barber doc directly | Denied | Rules L425 "clients cannot create or delete barbers (addBarber does that)" |
 
 ## 4. Anyone writing server-owned data
@@ -71,11 +72,17 @@ staff of another shop `owner('b')`/`barber('b')`, platform `admin()`, and signed
 | S-48 | Anyone | Write the trigger-owned shop summary fields (`priceMin`, `priceMax`, `serviceTypes`, `minDurationMin`) | Denied | Rules L437 |
 | S-49 | Anyone | Read or write the stats trigger ledger (`statContrib`) | Denied | Rules L77, L265 |
 
-## Missing tests (to add before this PR leaves draft)
+## New tests in this PR
 
-| ID | Plan |
+| ID | File | Run | Result |
+|---|---|---|---|
+| S-34, S-36 | `tests/nfr04.security.test.mjs` | `npx -y firebase-tools@latest emulators:exec --only firestore --project demo-fresher "node --test tests/nfr04.security.test.mjs"` | 2 passed, 0 failed, 0 skipped |
+| S-37 | `tests/nfr04.callables.test.mjs` | `node --test tests/nfr04.callables.test.mjs` (no emulator needed) | 3 passed, 0 failed, 0 skipped |
+
+Both are separate files so `tests/rules.test.mjs` still matches the prototype tag for the PR-19 parity check.
+
+## Remaining gaps
+
+| ID | Status |
 |---|---|
-| S-34 | Rules test: `barber('a')` updating `shops/a/services/s1` `{ active: false }` fails. |
-| S-36 | Rules test: `barber('a')` updating `shops/a` `{ noticeMins: 60 }` fails. |
-| S-14 | Callable test once `cancelBooking`/`reschedule` are on `main` (PR-10): another customer's call returns `permission-denied`. Record as "pending PR-10" until then. |
-| S-37 | Callable test once `addBarber` is on `main` (PR-07): a barber's call returns `permission-denied`. Record as "pending PR-07" until then. |
+| S-14 | Pending PR-10: callable test that another customer's `cancelBooking`/`reschedule` returns `not-found`. |
