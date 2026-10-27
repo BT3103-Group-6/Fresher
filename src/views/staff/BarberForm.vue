@@ -112,12 +112,12 @@ async function onSubmit() {
       <div class="field">
         <label for="b-pass">Temporary password</label>
         <input id="b-pass" v-model="password" type="password" autocomplete="new-password"
-          :aria-invalid="!!errors.password" aria-describedby="b-pass-hint b-pass-err" />
+          :aria-invalid="!!errors.password" :aria-describedby="errors.password ? 'b-pass-hint b-pass-err' : 'b-pass-hint'" />
         <span id="b-pass-hint" class="hint">At least 8 characters. Share it with the barber yourself; no email is sent.</span>
         <span v-if="errors.password" id="b-pass-err" class="error">{{ errors.password }}</span>
       </div>
     </template>
-    <fieldset class="group">
+    <fieldset class="group" :aria-describedby="errors.serviceIds ? 'b-svc-err' : undefined">
       <legend>Services offered</legend>
       <p v-if="services.length === 0" class="hint">Create a service first.</p>
       <div class="options">
@@ -126,9 +126,9 @@ async function onSubmit() {
           <span class="option-body"><span class="option-box" aria-hidden="true"></span>{{ s.name }}</span>
         </label>
       </div>
-      <span v-if="errors.serviceIds" class="error">{{ errors.serviceIds }}</span>
+      <span v-if="errors.serviceIds" id="b-svc-err" class="error">{{ errors.serviceIds }}</span>
     </fieldset>
-    <fieldset class="group">
+    <fieldset class="group" :aria-describedby="errors.workingHours ? 'b-hours-err' : undefined">
       <legend>Working hours</legend>
       <p class="hint">Tick the days this barber works, then set the hours.</p>
       <div v-for="d in DAYS" :key="d" class="hours">
@@ -143,7 +143,7 @@ async function onSubmit() {
         </template>
         <span v-else class="hint off-note">Day off</span>
       </div>
-      <span v-if="errors.workingHours" class="error">{{ errors.workingHours }}</span>
+      <span v-if="errors.workingHours" id="b-hours-err" class="error">{{ errors.workingHours }}</span>
     </fieldset>
     <div class="row-actions form-actions">
       <button class="btn" type="submit" :disabled="pending">{{ pending ? 'Saving…' : barber ? 'Save barber' : 'Add barber' }}</button>
