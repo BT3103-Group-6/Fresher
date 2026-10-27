@@ -133,3 +133,9 @@ exports.holdSlot =
   onCall(APP_CHECK, (request) => booking.holdSlot(request.data || {}));
 exports.releaseHold =
   onCall(APP_CHECK, (request) => booking.releaseHold(request.data || {}));
+
+const blocks = require("./blocks");
+exports.createBlock =
+  onCall(APP_CHECK, (request) => blocks.createBlock(request));
+exports.removeBlock =
+  onCall(APP_CHECK, (request) => blocks.removeBlock(request));
