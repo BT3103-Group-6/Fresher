@@ -14,7 +14,7 @@ const router = createRouter({
     { path: '/login', name: 'login', component: () => import('@/views/staff/SignInView.vue') },
     // Integration stubs (replaced story by story): the shared headers link to these named routes, so until
     // the PR that brings in each screen replaces its stub with the real route, it shows the sign-in page.
-    { path: '/', name: 'discover', component: () => import('@/views/staff/SignInView.vue') },
+    { path: '/', name: 'discover', meta: { wide: true }, component: () => import('@/views/customer/DiscoverView.vue') },
     // Customer booking (FR-02, FR-03). No sign-in needed until the OTP step.
     { path: '/shops/:shopId', name: 'book', component: () => import('@/views/customer/ShopView.vue') },
     {

@@ -3,6 +3,8 @@ const {initializeApp} = require("firebase-admin/app");
 const {HttpsError, onCall} = require("firebase-functions/https");
 const {getAuth} = require("firebase-admin/auth");
 const {getFirestore} = require("firebase-admin/firestore");
+const {onDocumentWritten} = require("firebase-functions/firestore");
+const {defineSecret} = require("firebase-functions/params");
 
 // Cost control: cap concurrent containers per function.
 setGlobalOptions({region: "asia-southeast1", maxInstances: 10});
@@ -135,7 +137,37 @@ exports.confirmBooking =
   onCall(APP_CHECK, (request) => booking.confirmBooking(request));
 exports.releaseHold =
   onCall(APP_CHECK, (request) => booking.releaseHold(request.data || {}));
+// FR-01: shop discovery. geocode is unauthenticated (discovery comes before
+// sign-in); the OneMap token is a secret and never leaves the function. With
+// no token it uses a small mock lookup in the emulator only (decisions A11,
+// L12); elsewhere it returns "unavailable".
+// In demo mode the token is not bound at all (an unset secret would stop the
+// deploy) and the stub answers (A17, L12).
+// The secret is not even declared in demo mode: the deploy prompts for every
+// declared secret, bound or not. DEMO_MODE comes from functions/.env.prod,
+// which the CLI loads before it analyses this file.
+const onemapToken = demo.demoMode() ? null : defineSecret("ONEMAP_TOKEN");
+const geocoder = require("./geocode");
+exports.geocode = onCall(
+    {...APP_CHECK, secrets: onemapToken ? [onemapToken] : []},
+    (request) => geocoder.geocode(request.data,
+        onemapToken ? onemapToken.value() : "", fetch,
+        demo.mocksAllowed()));
 
+// FR-01: keep the trigger-owned shop summary (priceMin, priceMax, serviceTypes,
+// minDurationMin) in step with the shop's services. Security Rules stop
+// clients writing these fields.
+const discovery = require("./discovery");
+exports.summarizeShopServices = onDocumentWritten(
+    "shops/{shopId}/services/{serviceId}", async (event) => {
+      const db = getFirestore();
+      const shopRef = db.doc(`shops/${event.params.shopId}`);
+      const [shop, services] = await Promise.all([
+        shopRef.get(), shopRef.collection("services").get()]);
+      if (!shop.exists) return;
+      await shopRef.update(
+          discovery.summarizeServices(services.docs.map((d) => d.data())));
+    });
 const blocks = require("./blocks");
 exports.createBlock =
   onCall(APP_CHECK, (request) => blocks.createBlock(request));
