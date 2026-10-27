@@ -131,6 +131,8 @@ exports.addBarber = onCall(APP_CHECK, async (request) => {
 const booking = require("./booking");
 exports.holdSlot =
   onCall(APP_CHECK, (request) => booking.holdSlot(request.data || {}));
+exports.confirmBooking =
+  onCall(APP_CHECK, (request) => booking.confirmBooking(request));
 exports.releaseHold =
   onCall(APP_CHECK, (request) => booking.releaseHold(request.data || {}));
 

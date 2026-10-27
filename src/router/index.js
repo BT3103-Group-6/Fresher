@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { isBarber, isOwner, isStaff, landingRoute, loadSession, mayHaveStaffSession, session } from '@/stores/session'
+import { draft } from '@/stores/booking'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -16,8 +17,15 @@ const router = createRouter({
     { path: '/', name: 'discover', component: () => import('@/views/staff/SignInView.vue') },
     // Customer booking (FR-02, FR-03). No sign-in needed until the OTP step.
     { path: '/shops/:shopId', name: 'book', component: () => import('@/views/customer/ShopView.vue') },
-    // Stubs until their PRs: ShopView links to these (book-verify: PR-08, waitlist: PR-16).
-    { path: '/shops/:shopId/verify', name: 'book-verify', component: () => import('@/views/staff/SignInView.vue') },
+    {
+      path: '/shops/:shopId/verify',
+      name: 'book-verify',
+      component: () => import('@/views/customer/VerifyView.vue'),
+      // The draft is in memory only, so a reload lands back on slot selection.
+      beforeEnter: (to) => (draft.hold && draft.shopId === to.params.shopId ? true : { name: 'book', params: to.params }),
+    },
+    // Stubs until their PRs: VerifyView links to deposit (FR-13), ShopView links to waitlist (PR-16).
+    { path: '/deposit/:requestId', name: 'deposit', component: () => import('@/views/staff/SignInView.vue') },
     { path: '/waitlist', name: 'waitlist', component: () => import('@/views/staff/SignInView.vue') },
     { path: '/my-bookings', name: 'my-bookings', component: () => import('@/views/staff/SignInView.vue') },
     // Barber schedule (FR-08): barbers see their own day, owners pick any barber in their shop.
