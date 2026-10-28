@@ -137,6 +137,14 @@ exports.confirmBooking =
   onCall(APP_CHECK, (request) => booking.confirmBooking(request));
 exports.releaseHold =
   onCall(APP_CHECK, (request) => booking.releaseHold(request.data || {}));
+
+// FR-04/FR-05: cancellation and rescheduling. Customers need a fresh OTP;
+// cancelBooking also accepts staff tokens (never late).
+exports.cancelBooking =
+  onCall(APP_CHECK, (request) => booking.cancelBooking(request));
+exports.reschedule =
+  onCall(APP_CHECK, (request) => booking.reschedule(request));
+
 // FR-01: shop discovery. geocode is unauthenticated (discovery comes before
 // sign-in); the OneMap token is a secret and never leaves the function. With
 // no token it uses a small mock lookup in the emulator only (decisions A11,
