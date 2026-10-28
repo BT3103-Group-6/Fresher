@@ -26,7 +26,7 @@ staff of another shop `owner('b')`/`barber('b')`, platform `admin()`, and signed
 | S-11 | Customer | Read another customer's no-show and late-cancel counts (`shopStats`), or reset their own | Denied | Rules L309 "a customer reads only their own shopStats and cannot write them"; L349 (noShowCount) |
 | S-12 | Customer, signed-out user | Read a HELD slot that has no customer yet | Denied | Rules L238 "keeps a HELD appointment (no customer yet) unreadable to customers and anonymous users" |
 | S-13 | Customer | Read reminder tasks (`notifications`) | Denied | Rules L175 "scopes audit log and notifications to the shop" |
-| S-14 | Customer | Cancel or reschedule another customer's booking through the `cancelBooking`/`reschedule` callable | Refused with `not-found` (`BOOKING_NOT_FOUND`), the same answer as for a booking that does not exist, so the caller cannot learn that it exists. A stale sign-in is refused first with `permission-denied` (fresh OTP, decisions A3) | **Pending PR-10** (callable, not rules; `cancelBooking`/`reschedule` are not on `main` yet) |
+| S-14 | Customer | Cancel or reschedule another customer's booking through the `cancelBooking`/`reschedule` callable | Refused with `not-found` (`BOOKING_NOT_FOUND`), the same answer as for a booking that does not exist, so the caller cannot learn that it exists. A stale sign-in (older than 10 minutes) is refused first with `unauthenticated` (`REAUTH_REQUIRED`, fresh OTP, decisions A3) | **Pending PR-10** (callable, not rules; `cancelBooking`/`reschedule` are not on `main` yet) |
 
 ## 2. Staff of one shop and another shop's data
 
