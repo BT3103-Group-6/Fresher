@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { nextTick, ref } from 'vue'
 import { collection, doc, setDoc } from 'firebase/firestore'
 import { db } from '@/firebase'
 import { SERVICE_TYPES } from '@/lib/serviceTypes'
@@ -37,7 +37,13 @@ function validate() {
 
 async function onSubmit() {
   formError.value = ''
-  if (!validate()) return
+  if (!validate()) {
+    await nextTick() // wait for Vue to draw the error messages
+    const ids = { name: 'svc-name', category: 'svc-cat', durationMin: 'svc-dur', price: 'svc-price' }
+    const first = Object.keys(ids).find((k) => errors.value[k])
+    if (first) document.getElementById(ids[first])?.focus()
+    return
+  }
   pending.value = true
   try {
     const ref_ = props.service
@@ -82,7 +88,7 @@ async function onSubmit() {
     <div class="field">
       <label for="svc-dur">Duration (minutes)</label>
       <input id="svc-dur" v-model="durationMin" type="number" min="5" step="5" inputmode="numeric"
-        :aria-invalid="!!errors.durationMin" aria-describedby="svc-dur-hint svc-dur-err" />
+        :aria-invalid="!!errors.durationMin" :aria-describedby="errors.durationMin ? 'svc-dur-hint svc-dur-err' : 'svc-dur-hint'" />
       <span id="svc-dur-hint" class="hint">In 5-minute steps.</span>
       <span v-if="errors.durationMin" id="svc-dur-err" class="error">{{ errors.durationMin }}</span>
     </div>
