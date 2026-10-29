@@ -88,7 +88,7 @@ async function onSubmit() {
     <div class="field">
       <label for="svc-dur">Duration (minutes)</label>
       <input id="svc-dur" v-model="durationMin" type="number" min="5" step="5" inputmode="numeric"
-        :aria-invalid="!!errors.durationMin" aria-describedby="errors.durationMin ? 'svc-dur-hint svc-dur-err' : 'svc-dur-hint'" />
+        :aria-invalid="!!errors.durationMin" :aria-describedby="errors.durationMin ? 'svc-dur-hint svc-dur-err' : 'svc-dur-hint'" />
       <span id="svc-dur-hint" class="hint">In 5-minute steps.</span>
       <span v-if="errors.durationMin" id="svc-dur-err" class="error">{{ errors.durationMin }}</span>
     </div>
