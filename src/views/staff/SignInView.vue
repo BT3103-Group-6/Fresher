@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { nextTick, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { isStaff, landingRoute, session, signIn, signOut } from '@/stores/session'
 
@@ -30,7 +30,12 @@ async function onSignOut() {
 
 async function onSubmit() {
   formError.value = ''
-  if (!validate()) return
+  if (!validate()) {
+    // NFR-06 issue 3: move focus to the first invalid field so the error is announced with it.
+    await nextTick() // wait for Vue to draw the error messages
+    document.getElementById(errors.value.email ? 'email' : 'password')?.focus()
+    return
+  }
   pending.value = true
   try {
     await signIn(email.value.trim(), password.value)
