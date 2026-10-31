@@ -181,3 +181,14 @@ exports.createBlock =
   onCall(APP_CHECK, (request) => blocks.createBlock(request));
 exports.removeBlock =
   onCall(APP_CHECK, (request) => blocks.removeBlock(request));
+
+// FR-12: no shows
+const service = require("./service");
+exports.startService =
+  onCall(APP_CHECK, (request) => service.startService(request));
+exports.finishService =
+  onCall(APP_CHECK, (request) => service.finishService(request));
+exports.markNoShow =
+  onCall(APP_CHECK, (request) => service.markNoShow(request));
+exports.reverseNoShow =
+  onCall(APP_CHECK, (request) => service.reverseNoShow(request));
