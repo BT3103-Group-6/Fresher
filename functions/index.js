@@ -1,6 +1,7 @@
 const {setGlobalOptions} = require("firebase-functions");
 const {initializeApp} = require("firebase-admin/app");
-const {HttpsError, onCall} = require("firebase-functions/https");
+const {HttpsError, onCall, onRequest} = require("firebase-functions/https");
+const {onSchedule} = require("firebase-functions/scheduler");
 const {getAuth} = require("firebase-admin/auth");
 const {getFirestore} = require("firebase-admin/firestore");
 const {onDocumentWritten} = require("firebase-functions/firestore");
@@ -192,3 +193,24 @@ exports.markNoShow =
   onCall(APP_CHECK, (request) => service.markNoShow(request));
 exports.reverseNoShow =
   onCall(APP_CHECK, (request) => service.reverseNoShow(request));
+
+// FR-09: every minute, send due notification tasks (mock provider) and move
+// expired HELD appointments to EXPIRED (decisions A4 addendum; resolves L2).
+const sweep = require("./sweep");
+const messaging = require("./messaging");
+exports.processNotifications = onSchedule(
+    {schedule: "every 1 minutes", timeZone: "Asia/Singapore"},
+    () => sweep.runAll(getFirestore(), messaging.mockProvider()));
+
+// Dev only: the emulator does not fire schedules, so this runs one sweep on
+// demand (`npm run sweep`). It is not exported outside the Functions emulator,
+// so it never exists in a deployment.
+if (process.env.FUNCTIONS_EMULATOR === "true") {
+  exports.devRunSweep = onRequest(async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).json({error: "Use POST."});
+      return;
+    }
+    res.json(await sweep.runAll(getFirestore(), messaging.mockProvider()));
+  });
+}
