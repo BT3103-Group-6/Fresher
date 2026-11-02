@@ -11,7 +11,11 @@ const password = ref('')
 const errors = ref({})
 const formError = ref('')
 const pending = ref(false)
-const isDev = import.meta.env.DEV
+// The dev-account hint is built only in dev. Vite turns import.meta.env.DEV into a constant at build time, so in a
+// production build this becomes an empty string and the text is dropped from the bundle.
+const devHint = import.meta.env.DEV
+  ? 'Dev accounts (run npm run seed): owner@shop-jurong.example.com, password123.'
+  : ''
 
 function validate() {
   const e = {}
@@ -86,9 +90,7 @@ async function onSubmit() {
       <button class="btn" type="submit" :disabled="pending">{{ pending ? 'Signing in…' : 'Sign in' }}</button>
     </form>
 
-    <p v-if="isDev" class="hint dev">
-      Dev accounts (run <code>npm run seed</code>): owner@shop-jurong.example.com, password123.
-    </p>
+    <p v-if="devHint" class="hint dev">{{ devHint }}</p>
     </section>
   </main>
 </template>
