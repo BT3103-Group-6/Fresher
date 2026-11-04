@@ -1,10 +1,16 @@
-# NFR-07 cost worksheet (draft)
+# NFR-07 cost worksheet
 
-Status: **draft, revised 2 Nov 2026**. Branch `chore/nfr-07-cost` (from `chore/demo-dataset`, PR-13 not yet merged).
+Status: **revised 4 Nov 2026** after the Product Owner's decision (A9). Branch `chore/nfr-07-cost`.
 
-**Target (NFR-07):** infrastructure plus messaging below **S$5 per active shop per month** at **200 bookings per shop per month**, including hosting, Firestore, OTP delivery, reminders and message retries. No unnecessary repeated reads of data that is still valid.
+**Target (NFR-07, restated by the Product Owner, Haziq, on 4 Nov 2026):** in the demo, messaging runs at no cost (mock reminder provider, Firebase test phone numbers for OTP), and infrastructure stays under **S$5 per active shop per month** at **200 bookings per shop per month**. The cost calculation still covers hosting, Firestore, OTP delivery, reminders and message retries, and there must be no unnecessary repeated reads of data that is still valid.
 
-**Result: NFR-07 not met as specified.** Infrastructure alone is about **S$0.43** per shop per month (about S$0.10 once the queue sweep is fixed), but **paid SMS for OTP and three messages per booking adds about S$61.69**, so the total is about **S$62–67 per shop per month, roughly 12–13.5 times the target**. Messaging, not Firebase, decides whether NFR-07 can be met. All amounts use **US$1 = S$1.2789** (mid-market, 2 Nov 2026).
+**Result: met in the demo.** Messaging costs **S$0** (mock provider and test numbers). Infrastructure is about **S$0.43** per shop per month (about S$0.10 once the queue sweep is fixed). Google Maps is not in that figure: in the demo it stays within Google's 10,000 free loads a month; beyond the free tier, at one map load per visit, it would add up to S$5.37 per shop.
+
+**Still open:** the queue sweep re-reads unchanged appointments every minute (section 4, item 1), which the "no unnecessary repeated reads" bullet rules out. Owner: Alson (FR-10, PR-17).
+
+**Why the target was changed.** The original target was "infrastructure plus messaging below S$5 per active shop per month", with real SMS for OTP and reminders. Against that target the result was **not met**: about **S$62 to S$67 per shop per month**, roughly 12–13.5 times S$5, almost all of it SMS (about S$61.69). Sections 2 and 3 keep that calculation as the reason for the change.
+
+All amounts use **US$1 = S$1.2789** (mid-market, 2 Nov 2026).
 
 ---
 
@@ -124,7 +130,7 @@ Free tiers are **ignored per shop** (they are per project or billing account and
 
 Rows are rounded; the subtotals and totals are calculated from unrounded values.
 
-**Against S$5: NFR-07 is not met as specified.** Infrastructure passes (S$0.43). The total fails by about 12–13.5 times. Messaging alone (S$61.69) is 12 times the target, and the 200 first-attempt OTP messages alone (S$12.79) are more than S$5.
+**Against the original S$5 target (with real SMS): not met.** Infrastructure passes (S$0.43). The total fails by about 12–13.5 times. Messaging alone (S$61.69) is 12 times the target, and the 200 first-attempt OTP messages alone (S$12.79) are more than S$5.
 
 To stay under S$5 with SMS at about S$0.076 each (Twilio), a shop could send about 66 paid messages a month in total, or **about 0.3 per booking**.
 
@@ -146,9 +152,9 @@ The demo deployment will very likely cost nothing. This does not change the per-
 - Carrier fees on Twilio messages are not included and would add to the S$47.62.
 - The total is dominated by the two SMS prices; a 20% change in them moves the total by about S$12.
 
-### 3.3 Options (open decision, A9; the choice belongs to the Product Owner)
+### 3.3 Options considered (decided 4 Nov 2026, A9)
 
-Decision A9 lists the NFR-07 cost worksheet as **OPEN**. Which option, if any, is taken is the **Product Owner's** decision. Each one changes a requirement or a decision, so `docs/decisions.md` must be updated first. None has been chosen.
+These were the options put to the Product Owner. **Decision (Haziq, PO, 4 Nov 2026):** for the demo, keep the free mock reminder provider and Firebase test phone numbers for OTP, and measure infrastructure against S$5 (A9, `docs/requirements.md` NFR-07). A production launch would need paid SMS or a free channel, and the target would have to be revisited then.
 - **Measure infrastructure against S$5 and pass messaging through to the shop at cost.** On these figures infrastructure is S$0.43 per shop per month (S$0.10 with the queue sweep fixed), so this meets the target; messaging (about S$62) would be billed to the shop as used.
 - **Cheaper or free reminder channel:** push notifications, email, or messaging-app templates. Not priced here.
 - **Fewer messages:** for example, no confirmation SMS (the confirmation is on screen) and one reminder instead of two.
@@ -163,7 +169,7 @@ Example: OTP for first-time customers only (assume 30% of bookings, with 10% res
 
 | # | Where | Reads | Recommendation |
 |---|---|---|---|
-| 1 | **Queue sweep** re-reads every live appointment in a 36-hour window, about twice a minute (`sweepQueueDelays` + `recalcBarber`/`loadState`, prototype `functions/queue.js`; L33) | about 864,000 per shop per month; more than 95% of the Firestore cost | **Fix.** Only recalculate barbers whose state can have changed: something in service, a live walk-in queue, or a booking whose start has passed. Or skip a barber whose appointments and queue have not changed since the last run. L33 already lists the first option. **Owner: Alson (FR-10, PR-17).** |
+| 1 | **Open.** **Queue sweep** re-reads every live appointment in a 36-hour window, about twice a minute (`sweepQueueDelays` + `recalcBarber`/`loadState`, prototype `functions/queue.js`; L33) | about 864,000 per shop per month; more than 95% of the Firestore cost | **Fix.** Only recalculate barbers whose state can have changed: something in service, a live walk-in queue, or a booking whose start has passed. Or skip a barber whose appointments and queue have not changed since the last run. L33 already lists the first option. **Owner: Alson (FR-10, PR-17).** |
 | 2 | **Verify screen** re-reads shop, service and barber (`VerifyView.vue`, 3 `getDoc`s) that the shop page's listeners loaded seconds earlier | 3 per booking | **Fix (low priority).** Pass the names from the shop page in the booking draft. Saves very little money but is exactly what NFR-07's third bullet rules out. **Owner: Haziq (`VerifyView`).** |
 | 3 | **Shop page** re-reads the shop doc, services and barbers that discovery's `shopDetail` cache already holds | 7 per booking | **Justify.** The shop page needs live listeners so a deactivated barber or service disappears at once (FR-07, checked on 2 Nov). The shop doc alone (1 read) could reuse the search result; not worth the extra code path |
 | 4 | **Shop page schedule listeners** re-read the barber-day schedules the next-slot lookup read | 2 per booking | **Justify.** Availability must be live (FR-02, NFR-03); the discovery cache is 60 seconds old by design |
@@ -193,4 +199,4 @@ Not measured in the emulator run:
 - **Whether reading a missing document is billed** is assumed (counted as one read each).
 - **One flow, two runs** (136 and 143 reads), at night, against emulator data. Production uses the same SDK, and billing counts documents the same way; the transport may differ.
 - **Hosting size** comes from the most recent production build's gzip sizes, not from this branch's build (not run, to avoid changing `dist/`).
-- **The decision is open:** NFR-07 stays "not met as specified" until the Product Owner decides on section 3.3 (A9).
+- **Decision recorded:** NFR-07 was restated by the Product Owner on 4 Nov 2026 (A9). The queue sweep fix (section 4, item 1) is still open.
