@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { nextTick, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { isStaff, landingRoute, session, signIn, signOut } from '@/stores/session'
 
@@ -11,7 +11,11 @@ const password = ref('')
 const errors = ref({})
 const formError = ref('')
 const pending = ref(false)
-const isDev = import.meta.env.DEV
+// The dev-account hint is built only in dev. Vite turns import.meta.env.DEV into a constant at build time, so in a
+// production build this becomes an empty string and the text is dropped from the bundle.
+const devHint = import.meta.env.DEV
+  ? 'Dev accounts (run npm run seed): owner@shop-jurong.example.com, password123.'
+  : ''
 
 function validate() {
   const e = {}
@@ -30,7 +34,12 @@ async function onSignOut() {
 
 async function onSubmit() {
   formError.value = ''
-  if (!validate()) return
+  if (!validate()) {
+    // NFR-06 issue 3: move focus to the first invalid field so the error is announced with it.
+    await nextTick() // wait for Vue to draw the error messages
+    document.getElementById(errors.value.email ? 'email' : 'password')?.focus()
+    return
+  }
   pending.value = true
   try {
     await signIn(email.value.trim(), password.value)
@@ -81,9 +90,7 @@ async function onSubmit() {
       <button class="btn" type="submit" :disabled="pending">{{ pending ? 'Signing in…' : 'Sign in' }}</button>
     </form>
 
-    <p v-if="isDev" class="hint dev">
-      Dev accounts (run <code>npm run seed</code>): owner@shop-jurong.example.com, password123.
-    </p>
+    <p v-if="devHint" class="hint dev">{{ devHint }}</p>
     </section>
   </main>
 </template>

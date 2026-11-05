@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { nextTick, ref } from 'vue'
 import { doc, updateDoc } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import { db, functions } from '@/firebase'
@@ -37,7 +37,10 @@ function workingHours() {
   return Object.fromEntries(DAYS.map((d) => [d, hours.value[d].open ? [{ start: hours.value[d].start, end: hours.value[d].end }] : []]))
 }
 
+let badDay = ''
+
 function validate() {
+  badDay = ''
   const e = {}
   const n = displayName.value.trim()
   if (!n) e.displayName = 'Enter the barber’s name.'
@@ -49,7 +52,10 @@ function validate() {
   if (serviceIds.value.length === 0) e.serviceIds = 'Choose at least one service.'
   for (const d of DAYS) {
     const h = hours.value[d]
-    if (h.open && (!h.start || !h.end || h.start >= h.end)) e.workingHours = `Check the hours for ${DAY_LABEL[d]}: start must be before end.`
+    if (h.open && (!h.start || !h.end || h.start >= h.end)) {
+      e.workingHours = `Check the hours for ${DAY_LABEL[d]}: start must be before end.`
+      badDay = d
+    }
   }
   errors.value = e
   return Object.keys(e).length === 0
@@ -57,7 +63,16 @@ function validate() {
 
 async function onSubmit() {
   formError.value = ''
-  if (!validate()) return
+  if (!validate()) {
+    await nextTick()
+    const first = errors.value.displayName ? '#b-name'
+      : errors.value.email ? '#b-email'
+      : errors.value.password ? '#b-pass'
+      : errors.value.serviceIds ? '#b-svc input'
+      : `#b-${badDay}-start`
+    document.querySelector(first)?.focus()
+    return
+  }
   pending.value = true
   try {
     if (props.barber) {
@@ -117,7 +132,7 @@ async function onSubmit() {
         <span v-if="errors.password" id="b-pass-err" class="error">{{ errors.password }}</span>
       </div>
     </template>
-    <fieldset class="group" :aria-describedby="errors.serviceIds ? 'b-svc-err' : undefined">
+    <fieldset id="b-svc" class="group" :aria-describedby="errors.serviceIds ? 'b-svc-err' : undefined">
       <legend>Services offered</legend>
       <p v-if="services.length === 0" class="hint">Create a service first.</p>
       <div class="options">
@@ -137,7 +152,7 @@ async function onSubmit() {
           <span class="option-body"><span class="option-box" aria-hidden="true"></span>{{ DAY_LABEL[d] }}</span>
         </label>
         <template v-if="hours[d].open">
-          <input v-model="hours[d].start" type="time" :aria-label="`${DAY_LABEL[d]} start`" />
+          <input :id="`b-${d}-start`" v-model="hours[d].start" type="time" :aria-label="`${DAY_LABEL[d]} start`" />
           <span class="to" aria-hidden="true">to</span>
           <input v-model="hours[d].end" type="time" :aria-label="`${DAY_LABEL[d]} end`" />
         </template>

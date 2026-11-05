@@ -1,6 +1,7 @@
 const {setGlobalOptions} = require("firebase-functions");
 const {initializeApp} = require("firebase-admin/app");
-const {HttpsError, onCall} = require("firebase-functions/https");
+const {HttpsError, onCall, onRequest} = require("firebase-functions/https");
+const {onSchedule} = require("firebase-functions/scheduler");
 const {getAuth} = require("firebase-admin/auth");
 const {getFirestore} = require("firebase-admin/firestore");
 const {onDocumentWritten} = require("firebase-functions/firestore");
@@ -137,6 +138,14 @@ exports.confirmBooking =
   onCall(APP_CHECK, (request) => booking.confirmBooking(request));
 exports.releaseHold =
   onCall(APP_CHECK, (request) => booking.releaseHold(request.data || {}));
+
+// FR-04/FR-05: cancellation and rescheduling. Customers need a fresh OTP;
+// cancelBooking also accepts staff tokens (never late).
+exports.cancelBooking =
+  onCall(APP_CHECK, (request) => booking.cancelBooking(request));
+exports.reschedule =
+  onCall(APP_CHECK, (request) => booking.reschedule(request));
+
 // FR-01: shop discovery. geocode is unauthenticated (discovery comes before
 // sign-in); the OneMap token is a secret and never leaves the function. With
 // no token it uses a small mock lookup in the emulator only (decisions A11,
@@ -173,3 +182,35 @@ exports.createBlock =
   onCall(APP_CHECK, (request) => blocks.createBlock(request));
 exports.removeBlock =
   onCall(APP_CHECK, (request) => blocks.removeBlock(request));
+
+// FR-12: no shows
+const service = require("./service");
+exports.startService =
+  onCall(APP_CHECK, (request) => service.startService(request));
+exports.finishService =
+  onCall(APP_CHECK, (request) => service.finishService(request));
+exports.markNoShow =
+  onCall(APP_CHECK, (request) => service.markNoShow(request));
+exports.reverseNoShow =
+  onCall(APP_CHECK, (request) => service.reverseNoShow(request));
+
+// FR-09: every minute, send due notification tasks (mock provider) and move
+// expired HELD appointments to EXPIRED (decisions A4 addendum; resolves L2).
+const sweep = require("./sweep");
+const messaging = require("./messaging");
+exports.processNotifications = onSchedule(
+    {schedule: "every 1 minutes", timeZone: "Asia/Singapore"},
+    () => sweep.runAll(getFirestore(), messaging.mockProvider()));
+
+// Dev only: the emulator does not fire schedules, so this runs one sweep on
+// demand (`npm run sweep`). It is not exported outside the Functions emulator,
+// so it never exists in a deployment.
+if (process.env.FUNCTIONS_EMULATOR === "true") {
+  exports.devRunSweep = onRequest(async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).json({error: "Use POST."});
+      return;
+    }
+    res.json(await sweep.runAll(getFirestore(), messaging.mockProvider()));
+  });
+}
