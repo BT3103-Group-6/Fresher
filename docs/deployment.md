@@ -1,7 +1,7 @@
 # Fresher — Public demo deployment runbook
 
 Decision: A17 in `docs/decisions.md`. Project `fresher-6d857` (alias `prod`), Blaze plan, region `asia-southeast1`.
-**The demo is shared through an expiring Hosting preview channel** (`https://fresher-6d857--demo-<random>.web.app`), not the live `fresher-6d857.web.app` address, which is never deployed. **App Check: configuration ready, console steps pending (L1).** The repository no longer switches it off, but it is not on in any deployment until the reCAPTCHA Enterprise key exists and the steps in "Turning App Check on" are done. Until then the backend is open to any client that knows the URL: keep the link among friends and let the channel expire.
+**The demo is shared through an expiring Hosting preview channel** (`https://fresher-6d857--demo-<random>.web.app`), not the live `fresher-6d857.web.app` address, which is never deployed. **App Check: console steps done; deploy and callable check pending (L1).** The reCAPTCHA Enterprise key exists and is registered, and the repository no longer switches App Check off, but it is not on in any deployment until the preview channel deploy and the checks in "Turning App Check on" are done. Until then the backend is open to any client that knows the URL: keep the link among friends and let the channel expire.
 **You run every command below yourself.** Claude Code does not deploy and does not touch the production project.
 
 This is a **demo**: SMS and payments are mocked, customers sign in with Firebase test phone numbers, and demo mode is on. **The site carries no demo banner**: only the landing page footer (mock data and messages) and the "Test mode" note on the deposit checkout say so. Tell friends this is a demo, which postal codes work (`160055`, `520478`, `600135`) and which test phone number and code each of them uses.
@@ -11,7 +11,7 @@ This is a **demo**: SMS and payments are mocked, customers sign in with Firebase
 | Area | Local (emulators) | Public demo |
 |---|---|---|
 | Firebase config | `import.meta.env.DEV` connects Auth, Firestore, Functions to emulators | Real config from `.env.local`; no emulator code path runs |
-| App Check | Not used (emulator; no site key needed) | **Configured, console steps pending (L1)**: both switches left at their default (on), so a production build needs `VITE_APP_CHECK_SITE_KEY` in `.env.local` and callables enforce `enforceAppCheck`. Not on in a deployment until the key exists and "Turning App Check on" is done |
+| App Check | Not used (emulator; no site key needed) | **Console steps done; deploy and callable check pending (L1)**: both switches left at their default (on), so a production build needs `VITE_APP_CHECK_SITE_KEY` in `.env.local` and callables enforce `enforceAppCheck`. Not on in a deployment until the deploy and checks in "Turning App Check on" are done |
 | Demo mode | Mocks allowed (emulator) | `DEMO_MODE=true` (functions) and `VITE_DEMO_MODE=true` (web): `mockPay` and the postal stub available (no banner; the deposit checkout keeps its "Test mode" note) |
 | `PAYMENT_WEBHOOK_SECRET` | Fixed mock value | Real secret in Secret Manager |
 | `ONEMAP_TOKEN` | Unset, stub | Unset, stub (function does not bind it in demo mode) |
@@ -42,8 +42,8 @@ This is a **demo**: SMS and payments are mocked, customers sign in with Firebase
 ### 2. Firestore (Build → Firestore Database)
 - [ ] The default database exists in Native mode in **asia-southeast1** (`firebase.json` says so). If it does not, create it there in production (locked) mode; the rules deploy replaces the locked rules.
 
-### 3. App Check (configuration ready, console steps pending)
-Follow "Turning App Check on" at the end: create the reCAPTCHA Enterprise key, register it under App Check, and put its key ID in `.env.local` as `VITE_APP_CHECK_SITE_KEY`. The production build fails without it. Add the preview channel host to the key once the channel exists (Part 4). Until these steps are done, App Check is not on.
+### 3. App Check (console steps done; deploy and callable check pending)
+Follow "Turning App Check on" at the end. The reCAPTCHA Enterprise key is created and registered under App Check (done); put its key ID in `.env.local` as `VITE_APP_CHECK_SITE_KEY`. The production build fails without it. Add the preview channel host to the key once the channel exists (Part 4). Until the deploy and checks are done, App Check is not on.
 
 ### 4. Budget and APIs
 - [ ] **Google Maps key** for the landing page map (decisions A20, L46): Google Cloud console (project `fresher-6d857`) -> APIs & Services -> enable **Maps JavaScript API** -> Credentials -> Create API key. Restrict it: *Application restrictions* = Websites, allowing `http://localhost:5173/*` and the exact preview channel host (add it after the first channel deploy, as with Authorized domains); *API restrictions* = Maps JavaScript API only. The Maps API needs the billing account linked; add a budget alert for it. Put the key in `.env.local` as `VITE_GOOGLE_MAPS_API_KEY` (not committed). Without the key the app still builds and the map section shows the list view.
@@ -163,7 +163,7 @@ To sign in as a showcase customer, add these as **test phone numbers** (Console 
 - **Cost stop:** disable the schedule with `gcloud scheduler jobs pause` on the `processNotifications` job (find its name in Cloud Scheduler), or delete the function.
 - **Remove the seed data:** delete the sample shops and staff users by hand in the console; there is no automated reset.
 
-## Turning App Check on (L1, pending)
+## Turning App Check on (L1: console steps done, deploy and check pending)
 1. Create the reCAPTCHA Enterprise key (Google Cloud console -> Security -> reCAPTCHA): platform Website; domains = the host(s) the site is served from (the live `fresher-6d857.web.app` and `fresher-6d857.firebaseapp.com`; a preview channel host must be listed too, and its domain changes if you make a new channel); checkbox challenge off; no `localhost`. Enable the reCAPTCHA Enterprise API if asked.
 2. Console -> App Check -> Apps -> your web app -> reCAPTCHA Enterprise -> paste the key ID. Leave the token TTL (1 hour) and risk threshold (0.5) at their defaults. Leave Firestore and Auth enforcement off until the metrics show verified traffic.
 3. Add `VITE_APP_CHECK_SITE_KEY=<key id>` to `.env.local` (never committed). `.env.production` no longer contains `VITE_APP_CHECK_ENABLED=false`; make sure `functions/.env.prod` has no `APP_CHECK_ENFORCE=false` line either.
