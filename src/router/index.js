@@ -25,7 +25,7 @@ const router = createRouter({
       beforeEnter: (to) => (draft.hold && draft.shopId === to.params.shopId ? true : { name: 'book', params: to.params }),
     },
     // Stubs until their PRs: VerifyView links to deposit (FR-13), ShopView links to waitlist (PR-16).
-    { path: '/deposit/:requestId', name: 'deposit', component: () => import('@/views/staff/SignInView.vue') },
+    { path: '/deposit/:requestId', name: 'deposit', component: () => import('@/views/customer/DepositView.vue') },
     { path: '/waitlist', name: 'waitlist', component: () => import('@/views/staff/SignInView.vue') },
     { path: '/my-bookings', name: 'my-bookings', component: () => import('@/views/customer/MyBookingsView.vue') },
     // Barber schedule (FR-08): barbers see their own day, owners pick any barber in their shop.
