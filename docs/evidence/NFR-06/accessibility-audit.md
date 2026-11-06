@@ -62,7 +62,7 @@ Checked by hand in Chrome against the Firebase emulators on Tue 27 Oct 2026.
 - Do a manual screen-reader pass (VoiceOver) on the booking flow: to do. Issue 10 is to be confirmed in it.
 - Run axe on the staff Queue screen once #30 is merged (skipped on 6 Nov).
 - Run axe's "needs review" results, which the first audit did not record.
-- Dev login hint in the production bundle: found 30 Oct, fixed by #25 (merged 2 Nov). Re-check with `npm run build` and `grep -r owner@shop-jurong dist/` on the final deploy build.
+- Dev login hint in the production bundle: found 29 Oct, fixed by #25 (merged 2 Nov). Re-check with `npm run build` and `grep -r owner@shop-jurong dist/` on the final deploy build.
 
 ## Re-run, 6 Nov 2026
 
