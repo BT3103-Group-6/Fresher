@@ -29,3 +29,4 @@ Screenshots show no token or key values.
 ## Outcome
 
 Enforcement is confirmed: a client without an App Check token is rejected. L1 is resolved once the app's own calls are confirmed to work on the preview channel (the rows above marked PENDING).
+**Update 6 Nov 2026, 16:38 SGT.** On the preview channel the app's App Check token exchange (exchangeRecaptchaEnterpriseToken) returned 400 (first API_KEY_INVALID from a bad apiKey in the build, fixed; then still 400), so the app's own callables got 401. Enforcement was rolled back with APP_CHECK_ENFORCE=false and the functions redeployed, so the backend works normally. L1 stays open until the token exchange returns 200 and the four in-app checks pass with enforcement on.
