@@ -1,10 +1,10 @@
 # NFR-06 accessibility evidence
 
-Story owner Firas. Audit run Mon 26 Oct 2026 on `main` at `2a37612`. Fixes merged in PR #14 on Wed 28 Oct 2026 (commit `abdaa83`).
+Story owner Firas. Audit run Mon 26 Oct 2026 on `main` at `2a37612`. Fixes merged in PR #14 on Wed 28 Oct 2026 (commit `abdaa83`) and in PRs #21, #23 and #24. Re-run Fri 6 Nov 2026 on `main` at `c485d23` (see [Re-run, 6 Nov 2026](#re-run-6-nov-2026)).
 
 ## Summary
 
-The first audit covered sign-in, shop configuration, the service form, the barber form and the customer shop page. axe-core found no violations in the app's own code on any of them. Manual checks found 6 issues, none critical or serious (3 moderate, 3 minor), and all of them concern error messages and ARIA references rather than focus, labels or contrast. Issues 1, 2 and 5 were in the barber form and have been fixed and checked in the browser. Issues 3 and 4 touch files owned by other people and are still open. Issue 6 is optional.
+The first audit covered sign-in, shop configuration, the service form, the barber form and the customer shop page. axe-core found no violations in the app's own code on any of them. Manual checks found 6 issues, none critical or serious (3 moderate, 3 minor), and all of them concern error messages and ARIA references rather than focus, labels or contrast. Issues 1, 2 and 5 were in the barber form and have been fixed and checked in the browser. Issues 3 and 4 were fixed in #21, #23 and #24 and re-checked on 6 Nov. Issue 6 is optional. The 6 Nov re-run found 4 new issues (7 to 10) on screens merged since, none critical or serious.
 
 ## Method
 
@@ -31,8 +31,8 @@ axe also flagged `aria-prohibited-attr` and `region` on `.panel-entry-btn`. That
 |---|---|---|---|---|---|
 | 1 | Barber form | "Choose at least one service." was not linked to its fieldset | Moderate | Firas | Fixed in #14 |
 | 2 | Barber form | The working-hours error was not linked to its fieldset | Moderate | Firas | Fixed in #14 |
-| 3 | Sign-in, service form, barber form | Errors appear silently, with no live region and no focus move | Moderate | Haziq (sign-in), Francis (service form), Firas (barber form) | Open, to agree with owners |
-| 4 | Service form | `#svc-dur` points `aria-describedby` at an id that does not exist until an error shows | Minor | Francis | Open, to agree with owner |
+| 3 | Sign-in, service form, barber form | Errors appear silently, with no live region and no focus move | Moderate | Haziq (sign-in), Francis (service form), Firas (barber form) | Fixed: focus moves to the first invalid field, in #21 (service form), #23 (sign-in) and #24 (barber form). Re-checked 6 Nov |
+| 4 | Service form | `#svc-dur` points `aria-describedby` at an id that does not exist until an error shows | Minor | Francis | Fixed in #21. Re-checked 6 Nov |
 | 5 | Barber form | `#b-pass` pointed at `b-pass-err` before that element existed | Minor | Firas | Fixed in #14 |
 | 6 | Barber form | A full week of time inputs takes about 60 Tab presses | Minor | Firas | Not planned. Check with NFR-02 first |
 
@@ -54,8 +54,88 @@ Checked by hand in Chrome against the Firebase emulators on Tue 27 Oct 2026.
 
 ## Still to do
 
-- Agree issues 3 and 4 with Haziq and Francis, and make "focus the first invalid field on submit" the shared pattern.
-- Run axe again on the screens that have merged since the audit (shop discovery, guest booking verification, the barber schedule), since they are in NFR-06's scope.
+- Fix issues 7 to 10 with their owners, using the same "focus the first invalid field on submit" pattern as #21, #23 and #24:
+  - Issue 7, guest verify errors: Haziq (FR-03, `VerifyView`).
+  - Issue 8, My bookings errors: Alson (FR-04, `MyBookingsView`).
+  - Issue 9, Schedule block-form errors: Francis (FR-08, `ScheduleView`).
+  - Issue 10, Booking confirmed focus and announcement: Haziq (FR-03, `VerifyView`), to be confirmed in the screen-reader pass.
+- Do a manual screen-reader pass (VoiceOver) on the booking flow: to do. Issue 10 is to be confirmed in it.
+- Run axe on the staff Queue screen once #30 is merged (skipped on 6 Nov).
 - Run axe's "needs review" results, which the first audit did not record.
-- Do a manual screen-reader pass (VoiceOver) on the booking flow.
-- After someone has the real Firebase values, run `npm run build` and `grep -r "owner@shop-jurong" dist/` to confirm the dev-only hint on the sign-in page is not shipped.
+- Dev login hint in the production bundle: found 29 Oct, fixed by #25 (merged 2 Nov). Re-check with `npm run build` and `grep -r owner@shop-jurong dist/` on the final deploy build.
+
+## Re-run, 6 Nov 2026
+
+Run Fri 6 Nov 2026 on `main` at `c485d23` (after #32), against the Firebase emulators seeded with `npm run seed`, on a dev server at port 5180. The script is in `~/fresher-audit` (`audit-rerun.mjs`), outside the repo; no dependency was added to the repo.
+
+**Method:** the same as 26 Oct.
+- axe-core with the same tags, at 390x844 and 1280x900.
+- The Vue DevTools overlay excluded.
+- Each form checked before and after an empty or invalid submit.
+- A Tab walk with the screenshot focus check, and the accessible name of every control.
+- Each error's text, its `aria-describedby` link, and where focus ends up.
+
+**Screens:**
+- landing and discovery (search 160055, 8 shops);
+- the shop page (Kopi & Clippers);
+- guest verify (details step, code step and Booking confirmed);
+- My bookings (phone step, code step, the list, and the reschedule panel);
+- the staff Schedule screen (signed in as the `shop-jurong` owner).
+
+**Not covered:** the staff Queue screen was skipped, because #30 is not on `main` yet.
+
+### Results per screen
+
+The results were the same at both widths.
+
+| Screen | axe before / after errors | Tab walk | Errors on empty or invalid submit | Focus after submit |
+|---|---|---|---|---|
+| Landing | 0 / 0 | 73 stops, all with a visible ring, no repeats | "Enter a 6-digit Singapore postal code." linked to `#postal`, in a `role="alert"` span | Stays on Search (the error is announced by the alert) |
+| Discovery (160055) | 0 | 89 stops, all visible | — | — |
+| Shop page | 0 / 0 | 5 stops, all visible (each radio group is one stop; arrow keys not re-checked) | "Choose a service." and "Choose a time.", each linked to its fieldset, `role="alert"` | Stays on Continue (announced by the alert) |
+| Verify, details | 0 / 0 | 6 stops, all visible | "Enter your name." and "Enter your mobile number.", linked to `#name` and `#phone` | Stays on Send code, no live region (**issue 7**) |
+| Verify, code | 0 / 0 | 6 stops, all visible | "Enter the 6-digit code." linked to `#code` | Stays on Confirm booking, no live region (**issue 7**) |
+| Booking confirmed | 0 | 3 stops, all visible | — | Focus is left on the page body (**issue 10**) |
+| My bookings, phone | 0 / 0 | 5 stops, all visible | "Enter your mobile number." linked to `#phone` | Stays on Send code, no live region (**issue 8**) |
+| My bookings, code | 0 / 0 | 6 stops, all visible | "Enter the 6-digit code." linked to `#code` | Stays on Verify, no live region (**issue 8**) |
+| My bookings, list | 0 | 6 stops, all visible | — | — |
+| My bookings, reschedule | 0 / 0 | — | "Choose a new time." linked to its fieldset | Stays on Move booking, no live region (**issue 8**) |
+| Staff Schedule | 0 / 0 | All stops visible; no trap (see below) | "Choose a start time." and "Choose an end time.", linked to `#f-start` and `#f-end` | Stays on Block this time, no live region (**issue 9**) |
+
+**On every screen:**
+- every control has a label;
+- every input border is at least 3:1;
+- no `aria-describedby` points at a missing id.
+
+**Schedule Tab walk.** The screenshot walk repeated the date field (`#day`) 115 times. That is the walker's blur-and-refocus resetting the date input to its first part, as with the time inputs on 26 Oct. A Tab-only walk confirmed there is no trap. Each date field takes 4 Tab presses (day, month, year and the picker button), and focus wraps back to the top after 21 presses at 390px and 24 at 1280px.
+
+**Issues 3 and 4 re-checked:**
+- **Sign-in:** an empty submit puts focus on `#email`.
+- **Service form:** an empty submit puts focus on `#svc-name`, and `#svc-dur` points only at `svc-dur-hint` until an error shows.
+- **Barber form:** an empty submit puts focus on `#b-name`.
+
+In all three, every error is linked to its field and nothing points at a missing id.
+
+**Console:** no errors from app code. The dev console showed:
+- a Google Maps `RefererNotAllowedMapError`, because the Maps key is not allowed for `localhost:5180`, so the map fell back to its list view;
+- two 501 responses (the source was not identified; most likely an emulator endpoint);
+- one transient Firestore "could not reach backend" warning.
+
+None of these is an accessibility issue.
+
+### New issues
+
+| # | Screen | Problem | Impact | Owner | Status |
+|---|---|---|---|---|---|
+| 7 | Guest verify (details and code steps) | Errors appear silently: focus stays on the submit button and the error spans are not live regions, so a screen-reader user hears nothing (as issue 3) | Moderate | Haziq (FR-03, `VerifyView`) | Open |
+| 8 | My bookings (phone step, code step, reschedule panel) | Errors appear silently, as issue 7 | Moderate | Alson (FR-04, `MyBookingsView`) | Open |
+| 9 | Staff Schedule, "Block personal time" form | Errors appear silently, as issue 7 | Moderate | Francis (FR-08, `ScheduleView`) | Open |
+| 10 | Booking confirmed | After Confirm booking, focus is left on the page body, and the "Status: Confirmed" `role="status"` badge is inserted together with the page, so it may not be announced. A screen-reader user may not learn that the booking succeeded | Minor (to confirm in the screen-reader pass) | Haziq (FR-03, `VerifyView`) | Open |
+
+The landing and shop-page errors are announced through `role="alert"`, so they are not counted as issues, although focus stays on the button there too.
+
+### Still to do after the re-run
+
+- **Manual screen-reader pass (VoiceOver) on the booking flow: to do.** It should also settle whether issue 10 is real.
+- Queue screen, once #30 is merged.
+- axe "needs review" results (still not recorded).
