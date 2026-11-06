@@ -242,3 +242,17 @@ if (demo.mocksAllowed()) {
         payments.mockPay(request, getFirestore(), payments.mockProvider(),
             payments.resolveSecret(paymentSecret.value())));
 }
+
+// FR-15: the waitlist (decisions A6 addendum). joinWaitlist and claimOffer are
+// callables; offerFreedTime runs on every schedule write, works out what was
+// freed (cancellation, expiry, block removal, moved booking) and offers it to
+// the earliest compatible waiting entry. The sweep expires lapsed offers and
+// entries past their date.
+const waitlist = require("./waitlist");
+exports.joinWaitlist = onCall(APP_CHECK, (request) =>
+  waitlist.joinWaitlist(request, getFirestore()));
+exports.claimOffer = onCall(APP_CHECK, (request) =>
+  waitlist.claimOffer(request, getFirestore()));
+exports.offerFreedTime = onDocumentWritten(
+    "shops/{shopId}/schedules/{scheduleId}",
+    (event) => waitlist.onScheduleWritten(event, getFirestore()));

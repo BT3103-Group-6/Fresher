@@ -26,7 +26,7 @@ const router = createRouter({
     },
     // Stubs until their PRs: VerifyView links to deposit (FR-13), ShopView links to waitlist (PR-16).
     { path: '/deposit/:requestId', name: 'deposit', component: () => import('@/views/customer/DepositView.vue') },
-    { path: '/waitlist', name: 'waitlist', component: () => import('@/views/staff/SignInView.vue') },
+    { path: '/waitlist', name: 'waitlist', component: () => import('@/views/customer/WaitlistView.vue') },
     { path: '/my-bookings', name: 'my-bookings', component: () => import('@/views/customer/MyBookingsView.vue') },
     // Barber schedule (FR-08): barbers see their own day, owners pick any barber in their shop.
     { path: '/staff/schedule', name: 'schedule', component: () => import('@/views/staff/ScheduleView.vue'), meta:{ requiresStaff: true }, },
