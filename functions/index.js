@@ -266,3 +266,9 @@ exports.claimOffer = onCall(APP_CHECK, (request) =>
 exports.offerFreedTime = onDocumentWritten(
     "shops/{shopId}/schedules/{scheduleId}",
     (event) => waitlist.onScheduleWritten(event, getFirestore()));
+
+// FR-14: keep shops/{shopId}/dailyStats current (idempotent; decisions A7).
+const stats = require("./stats");
+exports.onAppointmentWritten = onDocumentWritten(
+    "appointments/{appointmentId}",
+    (event) => stats.onAppointmentWritten(event));
