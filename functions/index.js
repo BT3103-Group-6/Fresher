@@ -215,6 +215,16 @@ if (process.env.FUNCTIONS_EMULATOR === "true") {
   });
 }
 
+// FR-10: walk-in queue. The delay recalculation also runs inside startService
+// and finishService and in the sweep above (decisions A5 addendum).
+const queue = require("./queue");
+exports.addWalkIn = onCall(APP_CHECK, (request) => queue.addWalkIn(request));
+exports.startWalkIn =
+  onCall(APP_CHECK, (request) => queue.startWalkIn(request));
+exports.finishWalkIn =
+  onCall(APP_CHECK, (request) => queue.finishWalkIn(request));
+exports.removeWalkIn =
+  onCall(APP_CHECK, (request) => queue.removeWalkIn(request));
 // FR-13: deposits (decisions A6 addendum). createDeposit registers the payment
 // with the mock provider; paymentWebhook applies the provider's signed events
 // (HTTPS, not a callable: the provider signs the raw body). The secret falls
