@@ -168,9 +168,11 @@ Customers join a waitlist for a date and are offered freed capacity in joining o
 - Every validation error identifies the field and describes the error in readable text.
 
 ### NFR-07 Cost efficiency — High — T-N07
-- Infrastructure plus messaging cost stays below S$5 per active shop per month at 200 bookings/month.
+- In the demo, messaging runs at no cost (mock reminder provider, Firebase test phone numbers for OTP), and infrastructure stays under S$5 per active shop per month at 200 bookings/month.
 - The cost calculation includes hosting, Firestore usage, OTP delivery, reminders and message retries.
 - No unnecessary repeated reads/requests where previously fetched data is still valid.
+
+Restated by the Product Owner (Haziq) on 4 Nov 2026. The original target included real SMS; see docs/evidence/NFR-07/cost-worksheet.md.
 
 ### NFR-08 Auditability — Medium — T-N08
 - 100% of booking state changes create an immutable audit record: booking ID, actor, timestamp, previous state, resulting state.

@@ -173,7 +173,7 @@ Status key: PROPOSED (default in use, needs group approval) · AGREED (confirmed
 - All shops, barbers, customers and appointments in the prototype are fictional seed data.
 - Audit records: TTL on `expireAt` (12 months).
 - Expired holds and waitlist entries: cleaned up by the scheduled function.
-- Cost worksheet for NFR-07: OPEN (needs current Firebase and SMS pricing).
+- Cost worksheet for NFR-07: DECIDED (4 Nov 2026, Haziq, PO). NFR-07 is restated for the demo: messaging runs at no cost (the mock reminder provider and Firebase test phone numbers for OTP), and infrastructure stays under S$5 per active shop per month at 200 bookings/month. Why: the worksheet (docs/evidence/NFR-07/cost-worksheet.md) found about S$62 to S$67 per shop per month with real SMS for OTP and reminders, against infrastructure of about S$0.43, so the demo keeps the free mock and test-number channels. A production launch would need paid SMS or a free channel, and the target would have to be revisited then.
 
 ## A10 Release plan — PROPOSED
 - Core: FR-01 to FR-08.
@@ -353,6 +353,7 @@ Not covered by the layout restyle: the unused Vue starter components (`HelloWorl
 | 2026-09-26 | A20 | Map markers redesigned (white scissors icon on the teal pin instead of the leaf, larger selected pin with always-visible label, optional price pills), cloud-based Google map style on `VITE_GOOGLE_MAP_ID` that hides POIs and transit and mutes parks and water (set up by hand, L48) | PROPOSED (user request) |
 | 2026-09-26 | A20 | Base map changed from Leaflet with OneMap tiles to the Google Maps JavaScript API (user request): needs a referrer-restricted browser key and billing (L46, L47); `@googlemaps/markerclusterer` replaces `leaflet.markercluster`; no key means list view only | PROPOSED (user request) |
 | 2026-09-25 | A20 | Landing page "Barbers across Singapore" map (extends FR-01): Leaflet with OneMap tiles and clustering, loaded only when the section scrolls into view, one cached read of verified shops, derived region and area, list view by region, search highlight. Before/after measurement: see the A20 measurement note below | PROPOSED (user request) |
+| 2026-11-04 | A9 | NFR-07 restated for the demo: messaging at no cost (mock reminder provider, Firebase test phone numbers for OTP), infrastructure under S$5 per active shop per month at 200 bookings/month; real SMS measured at about S$62 to S$67 per shop per month (cost worksheet); a production launch needs paid SMS or a free channel | DECIDED (Haziq, PO) |
 
 ## Known limitations and backlog
 Living list. Add an entry when a shortcut is taken or something is deferred; remove or mark **Resolved** when fixed. This section feeds the "Limitations" section of the final report.
