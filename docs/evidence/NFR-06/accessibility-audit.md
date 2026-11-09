@@ -4,7 +4,7 @@ Story owner Firas. Audit run Mon 26 Oct 2026 on `main` at `2a37612`. Fixes merge
 
 ## Summary
 
-The first audit covered sign-in, shop configuration, the service form, the barber form and the customer shop page. axe-core found no violations in the app's own code on any of them. Manual checks found 6 issues, none critical or serious (3 moderate, 3 minor), and all of them concern error messages and ARIA references rather than focus, labels or contrast. Issues 1, 2 and 5 were in the barber form and have been fixed and checked in the browser. Issues 3 and 4 were fixed in #21, #23 and #24 and re-checked on 6 Nov. Issue 6 is optional. The 6 Nov re-run found 4 new issues (7 to 10) on screens merged since, none critical or serious. A VoiceOver pass on the guest booking flow on 9 Nov read every field label but announced none of the verify errors and not the booking confirmation, which confirms issues 7 and 10 (see [Screen reader pass](#screen-reader-pass-voiceover-safari-macos-9-nov-2026)).
+The first audit covered sign-in, shop configuration, the service form, the barber form and the customer shop page. axe-core found no violations in the app's own code on any of them. Manual checks found 6 issues, none critical or serious (3 moderate, 3 minor), and all of them concern error messages and ARIA references rather than focus, labels or contrast. Issues 1, 2 and 5 were in the barber form and have been fixed and checked in the browser. Issues 3 and 4 were fixed in #21, #23 and #24 and re-checked on 6 Nov. Issue 6 is optional. The 6 Nov re-run found 4 new issues (7 to 10) on screens merged since, none critical or serious. A VoiceOver pass on the guest booking flow on 9 Nov read every field label but announced none of the verify errors and not the booking confirmation, which confirmed issues 7 and 10. Both were fixed in PR #41, and a VoiceOver re-test the same day found all three messages announced (see [Screen reader pass](#screen-reader-pass-voiceover-safari-macos-9-nov-2026)). Issues 8 and 9 remain open.
 
 ## Method
 
@@ -54,13 +54,11 @@ Checked by hand in Chrome against the Firebase emulators on Tue 27 Oct 2026.
 
 ## Still to do
 
-- Fix issues 7 to 10 with their owners, using the same "focus the first invalid field on submit" pattern as #21, #23 and #24:
-  - Issue 7, guest verify errors: Haziq (FR-03, `VerifyView`).
+- Fix issues 8 and 9 with their owners, using the same "focus the first invalid field on submit" pattern as #21, #23, #24 and #41:
   - Issue 8, My bookings errors: Alson (FR-04, `MyBookingsView`).
   - Issue 9, Schedule block-form errors: Francis (FR-08, `ScheduleView`).
-  - Issue 10, Booking confirmed focus and announcement: Haziq (FR-03, `VerifyView`).
-- **Issues 7 and 10 block an accessible booking for screen-reader users** and are recommended for a fix before the code freeze. Use the same pattern as #24 (focus the first invalid field on submit), plus moving focus to the confirmation heading when Booking confirmed appears.
-- Do a manual screen-reader pass (VoiceOver) on the booking flow: **done 9 Nov** (see [Screen reader pass](#screen-reader-pass-voiceover-safari-macos-9-nov-2026)). It confirmed issues 7 and 10. My bookings was not covered.
+- Issues 7 and 10 (guest verify errors and the Booking confirmed announcement): **fixed in PR #41** and re-tested with VoiceOver on 9 Nov.
+- Do a manual screen-reader pass (VoiceOver) on the booking flow: **done 9 Nov** (see [Screen reader pass](#screen-reader-pass-voiceover-safari-macos-9-nov-2026)). It confirmed issues 7 and 10, and the re-test confirmed the fix. My bookings was not covered.
 - Run axe on the staff Queue screen once #30 is merged (skipped on 6 Nov).
 - Run axe's "needs review" results, which the first audit did not record.
 - Dev login hint in the production bundle: found 29 Oct, fixed by #25 (merged 2 Nov). Re-check with `npm run build` and `grep -r owner@shop-jurong dist/` on the final deploy build.
@@ -128,16 +126,16 @@ None of these is an accessibility issue.
 
 | # | Screen | Problem | Impact | Owner | Status |
 |---|---|---|---|---|---|
-| 7 | Guest verify (details and code steps) | Errors appear silently: focus stays on the submit button and the error spans are not live regions, so a screen-reader user hears nothing (as issue 3). Confirmed by the VoiceOver pass on 9 Nov | Moderate | Haziq (FR-03, `VerifyView`) | Open |
+| 7 | Guest verify (details and code steps) | Errors appear silently: focus stays on the submit button and the error spans are not live regions, so a screen-reader user hears nothing (as issue 3). Confirmed by the VoiceOver pass on 9 Nov | Moderate | Haziq (FR-03, `VerifyView`) | Fixed in PR #41 (focus moves to the first invalid field, and to the Booking confirmed heading). Re-tested with VoiceOver on 9 Nov: all three now announced. |
 | 8 | My bookings (phone step, code step, reschedule panel) | Errors appear silently, as issue 7 | Moderate | Alson (FR-04, `MyBookingsView`) | Open |
 | 9 | Staff Schedule, "Block personal time" form | Errors appear silently, as issue 7 | Moderate | Francis (FR-08, `ScheduleView`) | Open |
-| 10 | Booking confirmed | After Confirm booking, focus is left on the page body, and the "Status: Confirmed" `role="status"` badge is inserted together with the page, so it may not be announced. A screen-reader user may not learn that the booking succeeded. Confirmed by the VoiceOver pass on 9 Nov: the confirmation was not announced | Moderate (raised from Minor on 9 Nov) | Haziq (FR-03, `VerifyView`) | Open |
+| 10 | Booking confirmed | After Confirm booking, focus is left on the page body, and the "Status: Confirmed" `role="status"` badge is inserted together with the page, so it may not be announced. A screen-reader user may not learn that the booking succeeded. Confirmed by the VoiceOver pass on 9 Nov: the confirmation was not announced | Moderate (raised from Minor on 9 Nov) | Haziq (FR-03, `VerifyView`) | Fixed in PR #41 (focus moves to the first invalid field, and to the Booking confirmed heading). Re-tested with VoiceOver on 9 Nov: all three now announced. |
 
 The landing and shop-page errors are announced through `role="alert"`, so they are not counted as issues, although focus stays on the button there too.
 
 ### Still to do after the re-run
 
-- Manual screen-reader pass (VoiceOver) on the booking flow: **done 9 Nov**, see below. Issue 10 is real.
+- Manual screen-reader pass (VoiceOver) on the booking flow: **done 9 Nov**, see below. Issue 10 was real; it and issue 7 are fixed in PR #41.
 - Queue screen, once #30 is merged.
 - axe "needs review" results (still not recorded).
 
@@ -160,8 +158,20 @@ Tester: Firas, on Mon 9 Nov 2026.
 | My bookings | Not tested in this pass | (8) |
 
 **Outcome.**
-- **Issue 7 is confirmed.** It stays Moderate and Open.
-- **Issue 10 is confirmed** and raised from Minor to Moderate. It stays Open.
+- **Issue 7 is confirmed.** Moderate.
+- **Issue 10 is confirmed** and raised from Minor to Moderate.
 - **Issues 8 and 9 are unchanged.** They remain automated findings only: My bookings and the staff Schedule screen were not part of this pass.
 
-A screen-reader user can fill in the details, but is not told when a step fails or when the booking succeeds. See "Still to do" for the recommended fix.
+Before the fix, a screen-reader user could fill in the details, but was not told when a step failed or when the booking succeeded.
+
+### Re-test after the fix (PR #41)
+
+Re-tested by Firas on Mon 9 Nov 2026 on `fix/nfr-06-verify-errors` at commit `8b00b07`, with the same setup, flow and method (press with VoiceOver, then hands off the keyboard for 5 seconds). Test number +65 9000 0402.
+
+| Check | Before the fix | After (`8b00b07`) |
+|---|---|---|
+| Details step: empty submit (Send code) | Not announced | **Announced** |
+| Code step: empty submit (Confirm booking) | Not announced | **Announced** |
+| Booking confirmed | Not announced | **Announced** |
+
+All three messages that were silent before the fix are now announced. Issues 7 and 10 are fixed. Issues 8 and 9 stay open.
