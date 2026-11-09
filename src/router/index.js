@@ -31,7 +31,8 @@ const router = createRouter({
     // Barber schedule (FR-08): barbers see their own day, owners pick any barber in their shop.
     { path: '/staff/schedule', name: 'schedule', component: () => import('@/views/staff/ScheduleView.vue'), meta:{ requiresStaff: true }, },
     { path: '/staff/queue', name: 'queue', component: () => import('@/views/staff/QueueView.vue'), meta: { requiresStaff: true } },
-    { path: '/staff/dashboard', name: 'dashboard', component: () => import('@/views/staff/SignInView.vue') },
+    // Shop dashboard (FR-14): owner only; barbers are redirected to their schedule by the guard below.
+    { path: '/staff/dashboard', name: 'dashboard', component: () => import('@/views/staff/DashboardView.vue'), meta: { requiresOwner: true }, },
     { path: '/staff/config', name: 'shop-config', component: () => import('@/views/staff/ShopConfigView.vue'), meta: { requiresOwner: true }, },
   ],
 })
