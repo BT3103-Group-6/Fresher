@@ -1,6 +1,6 @@
 # NFR-01 performance evidence
 
-Story owner Firas. Every measurement below was made on **Sun 8 Nov 2026** on `main` at **`2af028d`**, unless the row says otherwise. Scripts and raw results are in `~/fresher-audit` (outside the repo): `nfr01-map.mjs`, `nfr01-lighthouse.sh`, `nfr01-layout-flow.mjs`, and `results/`.
+Story owner Firas. Every measurement below was made on **Sun 8 Nov 2026** on `main` at **`2af028d`**, unless the row says otherwise. The results after the fixes in PR #39 were measured on **Mon 9 Nov 2026** (see [After the fixes](#after-the-fixes-9-nov-2026)). Scripts and raw results are in `~/fresher-audit` (outside the repo): `nfr01-map.mjs`, `nfr01-lighthouse.sh`, `nfr01-layout-flow.mjs`, and `results/`.
 
 NFR-01 asks for four things:
 - the customer booking flow loads within 3 seconds on 4G;
@@ -15,12 +15,12 @@ The team plan adds: no frames over 50 ms while scrolling.
 | Check | Result |
 |---|---|
 | a. Scroll lag | **Met on this setup** (median 0 frames over 50 ms; 1 of 3 runs had one 66.7 ms frame). Smooth on a real iPhone 13 Pro; touch swipes starting on a loaded map not measured |
-| b. Lighthouse at least 85 | **Not met on the shop page** (median 79 of 5 runs). Landing 99, My bookings 92, waitlist 92 |
-| c. Loads within 3 s on 4G | **FCP and Speed Index met on all four pages. LCP not met** on the shop page (3.20 s), My bookings (3.17 s) and waitlist (3.17 s), under Lighthouse's simulated slow 4G with 4x CPU |
-| d. No sideways scrolling or covered controls | **Not met at 320 px** on the landing page and results (18 px sideways scroll from the header). Every other page and width passes |
+| b. Lighthouse at least 85 | **Met on all four pages with #39.** Shop page 92 (was 79), landing 99, My bookings 92, waitlist 92 |
+| c. Loads within 3 s on 4G | **FCP and Speed Index met on all four pages. LCP not met** on the shop page (3.21 s after #39), My bookings (3.17 s) and waitlist (3.17 s), under Lighthouse's simulated slow 4G with 4x CPU. Recorded as a limitation |
+| d. No sideways scrolling or covered controls | **Met at all widths with #39.** The 320 px sideways scroll on the landing page and results is fixed; every other page and width already passed |
 | e. Every booking function usable on mobile | **Met:** all 10 functions passed at 390 px |
 
-The three open issues, with proposed fixes and owners, are listed under [Issues](#issues).
+Issues 1 and 2 are fixed in PR #39; see [After the fixes](#after-the-fixes-9-nov-2026). Issue 3 (LCP) remains a limitation. All three are listed under [Issues](#issues).
 
 ---
 
@@ -183,13 +183,45 @@ No console errors from app code during the run.
 
 ---
 
+## After the fixes (9 Nov 2026)
+
+Issues 1 and 2 were fixed in PR #39 (`fix/nfr-01-mobile-layout`, commit `33f0873`):
+- **Header (`src/assets/main.css`).** The customer header may now wrap. At 320 px the links move to a second row under the logo. At 375 px and wider it never wraps, and the header and link positions are identical to before.
+- **Shop page (`ShopView.vue`).** While the services load, the list shows 4 placeholder rows built from the same row markup, so they are the same height as loaded rows (72 px). The address line under the shop name is also reserved until the shop loads; on its own it caused a 0.031 shift. The loaded design is unchanged.
+
+**Lighthouse setup.** Same as section b: Lighthouse 12.8.2 mobile, simulated slow 4G with 4x CPU, 5 runs per page, median. "Before" is a production build of `main` at `6c69309`, re-measured on the same day; "after" is a production build of `33f0873`. Both were served with `vite preview` on port 4180.
+
+| Page | Measure | Before (`6c69309`) | After (#39) |
+|---|---|---|---|
+| `/shops/shop-tiong-bahru` | Performance (5 runs) | 79, 92, 76, 79, 79 → **79** | 91, 91, 92, 92, 92 → **92** |
+| | CLS (median) | **0.259** (one run 0.032) | **0.000** (all 5 runs) |
+| | LCP / FCP (median) | 3.20 s / 1.76 s | 3.21 s / 1.61 s |
+| `/` (landing) | Performance (5 runs) | 99 ×5 → **99** | 99 ×5 → **99** |
+| | CLS / LCP (median) | 0.004 / 1.69 s | 0.004 / 1.69 s |
+
+**Sideways scrolling.** Measured as in section d (`scrollWidth <= clientWidth`, and the covered-controls check), on the dev server with the emulators, on the landing page and results:
+
+| Width | Before | After (#39) |
+|---|---|---|
+| 320 | **Fail** (338 px wide) | Pass (320 px) |
+| 375, 390, 768, 1280 | Pass | Pass, header unchanged |
+
+No control was covered at any width.
+
+**Limits of the fixes.**
+- **Shops with more than 4 services still shift a little.** The shop document does not record how many services a shop has, so the page reserves 4 rows. On a 6-service shop (`demo-01-raffles-place`) the dev server measured CLS 0.048, under the 0.1 "good" threshold. The shop page measured above has exactly 4 services.
+- **LCP stays about 3.2 s** on the shop page (3.21 s after the fix), as before. It remains a recorded limitation (issue 3).
+- My bookings and the waitlist were not re-run. #39 does not change those pages; their scores (92 and 92) are from section b.
+
+---
+
 ## Issues
 
-| # | Issue | Proposed fix | Owner |
-|---|---|---|---|
-| 1 | 320 px sideways scroll on the landing page and results: the customer header's nav ("My bookings", "For barbers") ends at 338 px in a 320 px window (section d) | Let the header nav fit at 320 px, for example a smaller gap or wrapping below 360 px, with no visible change at 375 px and up | Firas (`CustomerHeader.vue`, `src/assets/main.css`) |
-| 2 | Shop page Lighthouse 79: CLS 0.259, almost all one shift (0.228) of the services fieldset when the services arrive from Firestore (section b) | Reserve the fieldset's space before the data arrives, for example a minimum height or placeholder rows while the services load | Haziq's file (`ShopView.vue`, FR-02): Firas to propose, Haziq to approve |
-| 3 | LCP about 3.2 s on the shop page, My bookings and waitlist: the largest text waits about 2.7 s for Firestore data or the route's chunk (section c) | None this sprint. Recorded as a limitation | — |
+| # | Issue | Proposed fix | Owner | Status |
+|---|---|---|---|---|
+| 1 | 320 px sideways scroll on the landing page and results: the customer header's nav ("My bookings", "For barbers") ends at 338 px in a 320 px window (section d) | Let the header nav fit at 320 px, for example a smaller gap or wrapping below 360 px, with no visible change at 375 px and up | Firas (`CustomerHeader.vue`, `src/assets/main.css`) | **Fixed in PR #39**: the header wraps at 320 px |
+| 2 | Shop page Lighthouse 79: CLS 0.259, almost all one shift (0.228) of the services fieldset when the services arrive from Firestore (section b) | Reserve the fieldset's space before the data arrives, for example a minimum height or placeholder rows while the services load | Haziq's file (`ShopView.vue`, FR-02): Firas to propose, Haziq to approve | **Fixed in PR #39**: 4 placeholder rows and a reserved address line; score 92, CLS 0.000 (0.048 on a 6-service shop) |
+| 3 | LCP about 3.2 s on the shop page, My bookings and waitlist: the largest text waits about 2.7 s for Firestore data or the route's chunk (section c) | None this sprint. Recorded as a limitation | — | Open, limitation |
 
 ## Limits
 
