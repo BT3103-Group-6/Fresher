@@ -10,7 +10,7 @@ Moderator: Firas. Results go in [results.md](results.md); consent in [consent-fo
 
 Sessions run on the moderator's laptop against the Firebase emulators. Nothing touches the live project, and no real SMS is sent.
 
-**Branch.** `scripts/seed.mjs` is not on `main` yet (PR-13 not merged), so the sessions run from **`chore/demo-dataset`**. Record the branch and commit in results.md (`git branch --show-current`, `git log --oneline -1`).
+**Branch.** PR-13 (#27, which adds `scripts/seed.mjs`) merged on Thu 5 Nov 2026 at 10.12 pm, during the session day. Branch used: `chore/demo-dataset` (`f181da5`) for sessions before 10.12 pm; `main` afterwards if re-seeded; not noted per session.
 
 ### Once at the start of each session day
 

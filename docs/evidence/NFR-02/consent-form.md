@@ -12,7 +12,7 @@
 - We record only a participant number (for example P03), not your name, phone number or email.
 - We note whether each task was completed, how long it took, and short notes on what was easy or hard.
 - There is no audio or video recording, and no screenshots of you.
-- In the app, please use a made-up name and the test phone number we give you. The app runs on a test system that is wiped after your session.
+- In the app, please use a made-up name and the test phone number we give you. The app runs on a test system that is wiped at the end of the testing day.
 
 **How the results are used.**
 - The results are anonymised.

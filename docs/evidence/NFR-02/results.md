@@ -2,39 +2,38 @@
 
 Script: [task-script.md](task-script.md). Consent: [consent-form.md](consent-form.md) (signed forms kept by the moderator, not in the repo).
 
-**Status: not run yet.** Fill in one row per participant.
+**Status: run.** Results from the moderator's report (Firas).
 
-- Sessions run: ____ (dates)
-- Moderator: Firas
-- Setup: moderator's laptop, Firebase emulators started fresh and seeded with `npm run seed` once at the start of each session day, phone-sized window (390 × 844), one test number per participant (P01 +65 9000 0001 to P08 +65 9000 0008).
-- **Branch and commit used for the sessions:** `chore/demo-dataset` at `________` (fill in from `git log --oneline -1` on the day). The sessions run from this branch because `scripts/seed.mjs` is not on `main` yet (PR-13 not merged); at the time of writing its head was `f181da5`.
+- Sessions run: Thu 5 Nov 2026, about 3 pm to midnight.
+- Moderator: Firas.
+- Setup: the moderator's laptop, Chrome, in a phone-sized window (device mode). The task script also planned fresh, seeded emulators, a 390 × 844 window and one test number per participant (P01 +65 9000 0001 to P08 +65 9000 0008); whether each of these was followed in each session was not recorded.
+- The consent form signed on 5 Nov said the system was wiped after each session. It was wiped at the end of the day. Only made-up names and test numbers were entered.
+- **Branch and commit used for the sessions:** `chore/demo-dataset` (`f181da5`) for sessions before 10.12 pm; `main` afterwards if re-seeded; not noted per session. PR-13 (#27) merged on Thu 5 Nov at 10.12 pm.
 
 ## Sample size
 
-**Sample size: 8 first-time participants**, to be confirmed by the PO (Haziq) under A8.
+**Sample size: 8 first-time participants**, confirmed by the PO under A8.
 
 With 8 participants, 95% means **all 8** must succeed (7 of 8 is 87.5%). A single failure misses the target.
 
 ## Results table
 
-Time is from the end of reading the task to the success criterion (mm:ss), or "stopped" with the time.
+The script planned to time each task from the end of reading it to the success criterion. Times were not recorded.
 
 | Participant | First-time user of Fresher | Task 1 without help | Task 2 without help | Task 3 without help | Time task 1 | Time task 2 | Time task 3 | Notes |
 |---|---|---|---|---|---|---|---|---|
-| P01 | | | | | | | | |
-| P02 | | | | | | | | |
-| P03 | | | | | | | | |
-| P04 | | | | | | | | |
-| P05 | | | | | | | | |
-| P06 | | | | | | | | |
-| P07 | | | | | | | | |
-| P08 | | | | | | | | |
+| P01 | Yes | Yes | Yes | Yes | not recorded | not recorded | not recorded | not recorded |
+| P02 | Yes | Yes | Yes | Yes | not recorded | not recorded | not recorded | not recorded |
+| P03 | Yes | Yes | Yes | Yes | not recorded | not recorded | not recorded | not recorded |
+| P04 | Yes | Yes | Yes | Yes | not recorded | not recorded | not recorded | not recorded |
+| P05 | Yes | Yes | Yes | Yes | not recorded | not recorded | not recorded | not recorded |
+| P06 | Yes | Yes | Yes | Yes | not recorded | not recorded | not recorded | not recorded |
+| P07 | Yes | Yes | Yes | Yes | not recorded | not recorded | not recorded | not recorded |
+| P08 | Yes | Yes | Yes | Yes | not recorded | not recorded | not recorded | not recorded |
 
-Notes should cover the following (see the script):
-- errors and whether field-named messages were understood;
-- whether the summary screen was read, and whether the participant's answer to "what were you booking?" matched;
-- whether the confirmation details were clear ("when, and with whom?");
-- any help given, word for word.
+**Help given:** none.
+
+Per-participant notes (errors seen, answers to "what were you booking?" and "when, and with whom?") were not recorded. The moderator's report gives these only as totals across all 8; see "Other NFR-02 checks".
 
 ## Completion rate without help
 
@@ -47,23 +46,23 @@ Notes should cover the following (see the script):
 
 | Measure | Result |
 |---|---|
-| First-time participants (n) | ____ |
-| Succeeded (tasks 1 and 2 both without help) | ____ of ____ = ____% |
-| **Against the 95% target** | **met / not met** |
-| Task 3 completed without help (reported separately) | ____ of ____ = ____% |
-| Median time, tasks 1 / 2 / 3 | ____ / ____ / ____ |
+| First-time participants (n) | 8 |
+| Succeeded (tasks 1 and 2 both without help) | 8 of 8 = 100% |
+| **Against the 95% target** | **met** |
+| Task 3 completed without help (reported separately) | 8 of 8 = 100% |
+| Median time, tasks 1 / 2 / 3 | not recorded / not recorded / not recorded |
 
-**Statement (fill in honestly):** "____ of ____ first-time participants (____%) completed the standard booking flow (tasks 1 and 2) without help, against a target of 95%. The target was met / not met. The sample was ____ participants, recruited ____ (for example classmates outside the team), which is / is not representative of first-time users because ____."
+**Statement:** "8 of 8 first-time participants (100%) completed the standard booking flow (tasks 1 and 2) without help, against a target of 95%. The target was met. The sample was 8 participants; how they were recruited, and how representative they are of first-time users, was not recorded. All 8 also completed task 3 (cancel or reschedule) without help, which is reported separately."
 
-If the target is missed, say so plainly here. Do not drop participants or re-run sessions to change the rate. List what caused each failure in the findings below.
+No participant was dropped and no session was re-run.
 
 ## Other NFR-02 checks
 
 | Check (NFR-02) | Observed | Evidence |
 |---|---|---|
-| Before final confirmation, one screen shows shop, service, barber, date, time and price | yes / no | "Your booking" summary on the verify screen; participants' answers to "what were you booking?" |
-| Every invalid or missing required input shows a visible message naming the field | yes / no | errors seen in sessions (notes column) |
-| A successful booking shows an explicit confirmation with the appointment details | yes / no | "Booking confirmed" screen; answers to "when, and with whom?" |
+| Before final confirmation, one screen shows shop, service, barber, date, time and price | Yes | "Your booking" summary on the verify screen. Moderator's report: the summary screen was understood by all 8 |
+| Every invalid or missing required input shows a visible message naming the field | Yes | Moderator's report: field-named errors were seen and understood by all 8 (which errors, per participant: not recorded) |
+| A successful booking shows an explicit confirmation with the appointment details | Yes | "Booking confirmed" screen. Moderator's report: the confirmation was clear (what, when, with whom) to all 8 |
 
 ## Findings
 
@@ -74,9 +73,7 @@ One row per problem seen. A problem seen by several participants is one row, wit
 - **Major:** caused a clear error, a long delay or a misunderstanding, but the participant recovered alone.
 - **Minor:** hesitation or a cosmetic issue.
 
-| # | Finding | Task | Participants affected | Severity | Owning story | Owner | Filed as |
-|---|---|---|---|---|---|---|---|
-| F1 | | | | | | | |
+**None flagged by participants.** Moderator summary: the flow was described as smooth and intuitive.
 
 **Owning story and owner** (from docs/team-plan.md):
 
@@ -93,3 +90,11 @@ One row per problem seen. A problem seen by several participants is one row, wit
 | Speed, slow screens, lag | NFR-01 Performance | Firas |
 
 File each finding as a GitHub issue against its story and put the issue number in "Filed as".
+
+## Limits
+
+- **Times and notes.** Task times and per-participant notes were not recorded, so there are no median times and no per-participant evidence beyond the completion results.
+- **Sample size.** The sample is 8 participants (confirmed by the PO under A8).
+- **Device.** Sessions ran on a laptop in a phone-sized window (Chrome device mode), not on phones.
+- **Moderator.** The moderator (Firas) is a team member.
+- **What the result shows.** With n = 8, a result of 8 of 8 is consistent with, but does not prove, a 95% completion rate in a wider population of first-time users.
