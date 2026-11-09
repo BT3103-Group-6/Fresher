@@ -6,7 +6,8 @@ Script: [task-script.md](task-script.md). Consent: [consent-form.md](consent-for
 
 - Sessions run: Thu 5 Nov 2026, about 3 pm to midnight.
 - Moderator: Firas.
-- Setup: the moderator's laptop, Chrome, in a phone-sized window (device mode). The task script also planned fresh, seeded emulators, a 390 × 844 window and one test number per participant (P01 +65 9000 0001 to P08 +65 9000 0008); whether each of these was followed in each session was not recorded.
+- Setup: as in the task script. The moderator's laptop, Chrome in device mode at 390 × 844, the Firebase emulators seeded with `npm run seed`, and each participant using their own test number (P01 +65 9000 0001 to P08 +65 9000 0008).
+- Recruitment: friends and peers of the moderator from outside the team, contacted directly. All were university students.
 - The consent form signed on 5 Nov said the system was wiped after each session. It was wiped at the end of the day. Only made-up names and test numbers were entered.
 - **Branch and commit used for the sessions:** `chore/demo-dataset` (`f181da5`) for sessions before 10.12 pm; `main` afterwards if re-seeded; not noted per session. PR-13 (#27) merged on Thu 5 Nov at 10.12 pm.
 
@@ -52,7 +53,7 @@ Per-participant notes (errors seen, answers to "what were you booking?" and "whe
 | Task 3 completed without help (reported separately) | 8 of 8 = 100% |
 | Median time, tasks 1 / 2 / 3 | not recorded / not recorded / not recorded |
 
-**Statement:** "8 of 8 first-time participants (100%) completed the standard booking flow (tasks 1 and 2) without help, against a target of 95%. The target was met. The sample was 8 participants; how they were recruited, and how representative they are of first-time users, was not recorded. All 8 also completed task 3 (cancel or reschedule) without help, which is reported separately."
+**Statement:** "8 of 8 first-time participants (100%) completed the standard booking flow (tasks 1 and 2) without help, against a target of 95%. The target was met. The sample was 8 participants, friends and peers of the moderator from outside the team, contacted directly; all were university students. This is a convenience sample, not representative of all first-time users. All 8 also completed task 3 (cancel or reschedule) without help, which is reported separately."
 
 No participant was dropped and no session was re-run.
 
@@ -95,6 +96,7 @@ File each finding as a GitHub issue against its story and put the issue number i
 
 - **Times and notes.** Task times and per-participant notes were not recorded, so there are no median times and no per-participant evidence beyond the completion results.
 - **Sample size.** The sample is 8 participants (confirmed by the PO under A8).
+- **Recruitment.** A convenience sample: friends and peers of the moderator from outside the team, contacted directly, all university students. It is not representative of all first-time users.
 - **Device.** Sessions ran on a laptop in a phone-sized window (Chrome device mode), not on phones.
 - **Moderator.** The moderator (Firas) is a team member.
 - **What the result shows.** With n = 8, a result of 8 of 8 is consistent with, but does not prove, a 95% completion rate in a wider population of first-time users.
