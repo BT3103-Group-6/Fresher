@@ -215,6 +215,16 @@ if (process.env.FUNCTIONS_EMULATOR === "true") {
   });
 }
 
+// FR-10: walk-in queue. The delay recalculation also runs inside startService
+// and finishService and in the sweep above (decisions A5 addendum).
+const queue = require("./queue");
+exports.addWalkIn = onCall(APP_CHECK, (request) => queue.addWalkIn(request));
+exports.startWalkIn =
+  onCall(APP_CHECK, (request) => queue.startWalkIn(request));
+exports.finishWalkIn =
+  onCall(APP_CHECK, (request) => queue.finishWalkIn(request));
+exports.removeWalkIn =
+  onCall(APP_CHECK, (request) => queue.removeWalkIn(request));
 // FR-13: deposits (decisions A6 addendum). createDeposit registers the payment
 // with the mock provider; paymentWebhook applies the provider's signed events
 // (HTTPS, not a callable: the provider signs the raw body). The secret falls
@@ -242,3 +252,23 @@ if (demo.mocksAllowed()) {
         payments.mockPay(request, getFirestore(), payments.mockProvider(),
             payments.resolveSecret(paymentSecret.value())));
 }
+
+// FR-15: the waitlist (decisions A6 addendum). joinWaitlist and claimOffer are
+// callables; offerFreedTime runs on every schedule write, works out what was
+// freed (cancellation, expiry, block removal, moved booking) and offers it to
+// the earliest compatible waiting entry. The sweep expires lapsed offers and
+// entries past their date.
+const waitlist = require("./waitlist");
+exports.joinWaitlist = onCall(APP_CHECK, (request) =>
+  waitlist.joinWaitlist(request, getFirestore()));
+exports.claimOffer = onCall(APP_CHECK, (request) =>
+  waitlist.claimOffer(request, getFirestore()));
+exports.offerFreedTime = onDocumentWritten(
+    "shops/{shopId}/schedules/{scheduleId}",
+    (event) => waitlist.onScheduleWritten(event, getFirestore()));
+
+// FR-14: keep shops/{shopId}/dailyStats current (idempotent; decisions A7).
+const stats = require("./stats");
+exports.onAppointmentWritten = onDocumentWritten(
+    "appointments/{appointmentId}",
+    (event) => stats.onAppointmentWritten(event));

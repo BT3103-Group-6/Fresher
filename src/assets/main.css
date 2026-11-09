@@ -144,7 +144,8 @@ fieldset { border: 0; padding: 0; margin: 0 0 0.9rem; }
 .account-link { display: block; white-space: nowrap; font-weight: 700; padding: var(--space-2) 0; margin-bottom: var(--space-2); }
 
 /* Customer header (CustomerHeader.vue), shared by every customer page */
-.customer-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-2) 0; margin-bottom: var(--space-4); }
+/* NFR-01: wraps instead of overflowing when the links don't fit beside the logo (320 px on the landing page). */
+.customer-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 var(--space-4); padding: var(--space-2) 0; margin-bottom: var(--space-4); }
 .customer-header .brand { display: inline-flex; align-items: center; min-height: var(--tap-target); text-decoration: none; }
 .customer-nav { display: flex; align-items: center; gap: var(--space-5); }
 .customer-nav a { white-space: nowrap; font-weight: 700; text-decoration: none; padding: 0.6rem 0; border-bottom: 3px solid transparent; }

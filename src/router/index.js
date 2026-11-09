@@ -26,12 +26,13 @@ const router = createRouter({
     },
     // Stubs until their PRs: VerifyView links to deposit (FR-13), ShopView links to waitlist (PR-16).
     { path: '/deposit/:requestId', name: 'deposit', component: () => import('@/views/customer/DepositView.vue') },
-    { path: '/waitlist', name: 'waitlist', component: () => import('@/views/staff/SignInView.vue') },
+    { path: '/waitlist', name: 'waitlist', component: () => import('@/views/customer/WaitlistView.vue') },
     { path: '/my-bookings', name: 'my-bookings', component: () => import('@/views/customer/MyBookingsView.vue') },
     // Barber schedule (FR-08): barbers see their own day, owners pick any barber in their shop.
-    { path: '/staff/schedule', name: 'schedule', component: () => import('@/views/staff/ScheduleView.vue') },
-    { path: '/staff/queue', name: 'queue', component: () => import('@/views/staff/SignInView.vue') },
-    { path: '/staff/dashboard', name: 'dashboard', component: () => import('@/views/staff/SignInView.vue') },
+    { path: '/staff/schedule', name: 'schedule', component: () => import('@/views/staff/ScheduleView.vue'), meta:{ requiresStaff: true }, },
+    { path: '/staff/queue', name: 'queue', component: () => import('@/views/staff/QueueView.vue'), meta: { requiresStaff: true } },
+    // Shop dashboard (FR-14): owner only; barbers are redirected to their schedule by the guard below.
+    { path: '/staff/dashboard', name: 'dashboard', component: () => import('@/views/staff/DashboardView.vue'), meta: { requiresOwner: true }, },
     { path: '/staff/config', name: 'shop-config', component: () => import('@/views/staff/ShopConfigView.vue'), meta: { requiresOwner: true }, },
   ],
 })
