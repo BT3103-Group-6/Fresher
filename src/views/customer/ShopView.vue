@@ -188,6 +188,8 @@ async function onContinue() {
       <header class="shop-head">
         <h1>{{ shop?.name ?? 'Book an appointment' }}</h1>
         <p v-if="shop" class="lede">{{ shop.address }}</p>
+        <!-- NFR-01: holds the address line's space until the shop loads. -->
+        <p v-else class="lede" aria-hidden="true">&nbsp;</p>
       </header>
 
       <p v-if="!online" class="banner" role="alert">
@@ -203,7 +205,15 @@ async function onContinue() {
         <fieldset class="card step" :aria-describedby="errors.service ? 'service-err' : undefined">
           <legend><span class="step-no" aria-hidden="true">1</span>Service</legend>
           <p v-if="listed.services && !services.length" class="hint">This shop has no services to book yet.</p>
-          <div class="opts">
+          <div class="opts" :aria-busy="!listed.services">
+            <!-- NFR-01: placeholder rows, the same size as loaded ones, so later steps don't jump when services arrive. -->
+            <template v-if="!listed.services">
+              <span class="sr-only">Loading services…</span>
+              <span v-for="n in 4" :key="n" class="opt-body placeholder" aria-hidden="true">
+                <span class="mark"></span>
+                <span class="opt-main"><span class="opt-title">&nbsp;</span><span class="opt-sub">&nbsp;</span></span>
+              </span>
+            </template>
             <label v-for="s in services" :key="s.id" class="opt">
               <input v-model="draft.serviceId" type="radio" name="service" :value="s.id" />
               <span class="opt-body">
@@ -314,6 +324,8 @@ async function onContinue() {
   border: 1px solid var(--color-field-border); border-radius: var(--radius-md); background: var(--color-surface);
 }
 .opt:hover input:not(:disabled) + .opt-body { background: var(--color-tint); }
+.opt-body.placeholder { border-color: var(--color-line); background: var(--color-tint); }
+.opt-body.placeholder .mark { border-color: var(--color-line); }
 .mark {
   flex: none; display: grid; place-items: center; width: 1.4rem; height: 1.4rem; border-radius: var(--radius-pill);
   border: 2px solid var(--color-field-border); background: var(--color-surface); color: var(--color-surface);
