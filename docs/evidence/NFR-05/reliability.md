@@ -1,7 +1,7 @@
 # NFR-05 reliability and failure handling
 
 Owner: K-Rei. Reviewer: Haziq.
-Status: checks completed; awaiting review and the Windows failure-test log upload.
+Status: checks completed; ready for Haziq's review.
 Recorded: 10 Nov 2026. PR: #40. Integration prerequisite: PR-19 / #43 (merged).
 
 ## Results
@@ -52,7 +52,7 @@ The main test injects 100 rejected `confirmBooking` calls representing failed wr
 Two additional tests provide controls: a successful response must render "Booking confirmed", and a rejected request followed by a successful retry must reuse the request ID and verified OTP. The recovery control injects one extra failure outside the main 100-case set.
 
 Windows result reported by K-Rei: 3 tests passed, 0 failed, 0 cancelled, 0 skipped; total 916.524 ms. The same three tests also passed independently during test preparation.
-Raw Windows output to upload: `docs/evidence/NFR-05/failed-writes.txt`.
+Raw Windows output: `docs/evidence/NFR-05/failed-writes.txt`.
 
 ```powershell
 node --test --test-reporter=tap tests/nfr05.failure.test.mjs
