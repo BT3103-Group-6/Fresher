@@ -11,7 +11,7 @@ This is a **demo**: SMS and payments are mocked, customers sign in with Firebase
 | Area | Local (emulators) | Public demo |
 |---|---|---|
 | Firebase config | `import.meta.env.DEV` connects Auth, Firestore, Functions to emulators | Real config from `.env.local`; no emulator code path runs |
-| App Check | Not used (emulator; no site key needed) | **Console steps done; deploy and callable check pending (L1)**: both switches left at their default (on), so a production build needs `VITE_APP_CHECK_SITE_KEY` in `.env.local` and callables enforce `enforceAppCheck`. Not on in a deployment until the deploy and checks in "Turning App Check on" are done |
+| App Check | Not used (emulator; no site key needed) | **On (L1 resolved 10 Nov 2026)**: both switches at their default (on), so a production build needs `VITE_APP_CHECK_SITE_KEY` in `.env.local` and every callable enforces `enforceAppCheck` (HTTP 401 without a token). Evidence: `docs/evidence/NFR-04/app-check.md` |
 | Demo mode | Mocks allowed (emulator) | `DEMO_MODE=true` (functions) and `VITE_DEMO_MODE=true` (web): `mockPay` and the postal stub available (no banner; the deposit checkout keeps its "Test mode" note) |
 | `PAYMENT_WEBHOOK_SECRET` | Fixed mock value | Real secret in Secret Manager |
 | `ONEMAP_TOKEN` | Unset, stub | Unset, stub (function does not bind it in demo mode) |
@@ -23,9 +23,9 @@ This is a **demo**: SMS and payments are mocked, customers sign in with Firebase
 
 | File | Contents | Committed? |
 |---|---|---|
-| `.env.local` | `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` (real web config); `VITE_APP_CHECK_SITE_KEY` only once App Check is turned on | No (`*.local` is git-ignored). The web config is not secret, but keep it out of the repo anyway |
+| `.env.local` | `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` (real web config); `VITE_APP_CHECK_SITE_KEY` (required: App Check is on), `VITE_GOOGLE_MAPS_API_KEY`, `VITE_GOOGLE_MAP_ID` | No (`*.local` is git-ignored). The web config is not secret, but keep it out of the repo anyway |
 | `.env.production` | `VITE_DEMO_MODE=true` | Yes (not secret) |
-| `functions/.env.prod` | `DEMO_MODE=true`, `APP_BASE_URL=<preview channel URL>` (no `APP_CHECK_ENFORCE` line, so App Check is enforced once the key and console steps are done) | Yes (not secret). Loaded only when deploying with `--project prod`, so the emulators never see it |
+| `functions/.env.prod` | `DEMO_MODE=true`, `APP_BASE_URL=<preview channel URL>` (no `APP_CHECK_ENFORCE` line, so App Check is enforced) | Yes (not secret). Loaded only when deploying with `--project prod`, so the emulators never see it |
 | Secret Manager | `PAYMENT_WEBHOOK_SECRET` | Never in files |
 | `.firebaserc` | alias `prod` → `fresher-6d857` | Yes |
 
@@ -42,8 +42,8 @@ This is a **demo**: SMS and payments are mocked, customers sign in with Firebase
 ### 2. Firestore (Build → Firestore Database)
 - [ ] The default database exists in Native mode in **asia-southeast1** (`firebase.json` says so). If it does not, create it there in production (locked) mode; the rules deploy replaces the locked rules.
 
-### 3. App Check (console steps done; deploy and callable check pending)
-Follow "Turning App Check on" at the end. The reCAPTCHA Enterprise key is created and registered under App Check (done); put its key ID in `.env.local` as `VITE_APP_CHECK_SITE_KEY`. The production build fails without it. Add the preview channel host to the key once the channel exists (Part 4). Until the deploy and checks are done, App Check is not on.
+### 3. App Check (on)
+Follow "Turning App Check on" at the end. The reCAPTCHA Enterprise key is created and registered under App Check (done); put its key ID in `.env.local` as `VITE_APP_CHECK_SITE_KEY`. The production build fails without it. Add the preview channel host to the key once the channel exists (Part 4). Done for the preview channel and the live site (10 Nov 2026); a new preview channel host must be added to the key before it is shared.
 
 ### 4. Budget and APIs
 - [ ] **Google Maps key** for the landing page map (decisions A20, L46): Google Cloud console (project `fresher-6d857`) -> APIs & Services -> enable **Maps JavaScript API** -> Credentials -> Create API key. Restrict it: *Application restrictions* = Websites, allowing `http://localhost:5173/*`, `https://fresher-6d857.web.app/*`, `https://fresher-6d857.firebaseapp.com/*` and the exact preview channel host (add it after the first channel deploy, as with Authorized domains; a missing host shows `RefererNotAllowedMapError` in the console and the map falls back to the list); *API restrictions* = Maps JavaScript API only. The Maps API needs the billing account linked; add a budget alert for it. Put the key in `.env.local` as `VITE_GOOGLE_MAPS_API_KEY` (not committed). Without the key the app still builds and the map section shows the list view.
@@ -100,7 +100,7 @@ Run from the repo root. Each step is separate so you can stop and check. Hosting
 # 0. Quality gate. Emulators must be running for the rules and function tests.
 npm run test:rules
 npm --prefix functions run lint
-npm run build            # fails on placeholder web config (and on a missing site key only if App Check is on)
+npm run build            # fails on placeholder web config (and on a missing site key, since App Check is on)
 
 # 1. Security Rules and indexes
 npx -y firebase-tools@latest deploy --only firestore:rules,firestore:indexes --project prod
@@ -181,7 +181,7 @@ Once, after the code freeze, with two people. Deploy from `main` once #19 (App C
 - **Cost stop:** disable the schedule with `gcloud scheduler jobs pause` on the `processNotifications` job (find its name in Cloud Scheduler), or delete the function.
 - **Remove the seed data:** delete the sample shops and staff users by hand in the console; there is no automated reset.
 
-## Turning App Check on (L1: console steps done, deploy and check pending)
+## Turning App Check on (done 10 Nov 2026; L1 resolved)
 1. Create the reCAPTCHA Enterprise key (Google Cloud console -> Security -> reCAPTCHA): platform Website; domains = the host(s) the site is served from (the live `fresher-6d857.web.app` and `fresher-6d857.firebaseapp.com`; a preview channel host must be listed too, and its domain changes if you make a new channel); checkbox challenge off; no `localhost`. Enable the reCAPTCHA Enterprise API if asked.
 2. Console -> App Check -> Apps -> your web app -> reCAPTCHA Enterprise -> paste the key ID. Leave the token TTL (1 hour) and risk threshold (0.5) at their defaults. Leave Firestore and Auth enforcement off until the metrics show verified traffic.
 3. Add `VITE_APP_CHECK_SITE_KEY=<key id>` to `.env.local` (never committed). `.env.production` no longer contains `VITE_APP_CHECK_ENABLED=false`; make sure `functions/.env.prod` has no `APP_CHECK_ENFORCE=false` line either.
