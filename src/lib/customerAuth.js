@@ -10,6 +10,16 @@ export function normalizeSgMobile(input) {
   return /^[89]\d{7}$/.test(digits) ? `+65${digits}` : null
 }
 
+/**
+ * The signed-in customer when they already proved this exact number on this device (for example a booking a
+ * moment ago), else null. Callers reuse that sign-in instead of sending another SMS, which Firebase throttles
+ * per number and IP (auth/too-many-requests).
+ */
+export function signedInAs(e164) {
+  const user = auth.currentUser
+  return user && e164 && user.phoneNumber === e164 ? user : null
+}
+
 let verifier
 let confirmation
 

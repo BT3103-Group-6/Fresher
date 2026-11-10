@@ -11,9 +11,7 @@ const router = createRouter({
     return { top: 0 }
   },
   routes: [
-    { path: '/login', name: 'login', component: () => import('@/views/staff/SignInView.vue') },
-    // Integration stubs (replaced story by story): the shared headers link to these named routes, so until
-    // the PR that brings in each screen replaces its stub with the real route, it shows the sign-in page.
+    // Customer home: discover shops (FR-01). Staff sign in at /login.
     { path: '/', name: 'discover', meta: { wide: true }, component: () => import('@/views/customer/DiscoverView.vue') },
     // Customer booking (FR-02, FR-03). No sign-in needed until the OTP step.
     { path: '/shops/:shopId', name: 'book', component: () => import('@/views/customer/ShopView.vue') },
@@ -24,16 +22,40 @@ const router = createRouter({
       // The draft is in memory only, so a reload lands back on slot selection.
       beforeEnter: (to) => (draft.hold && draft.shopId === to.params.shopId ? true : { name: 'book', params: to.params }),
     },
-    // Stubs until their PRs: VerifyView links to deposit (FR-13), ShopView links to waitlist (PR-16).
+    // Deposit checkout (FR-13). Reached from UI-C3 or UI-C4; reads everything from the live booking, so a reload is safe.
     { path: '/deposit/:requestId', name: 'deposit', component: () => import('@/views/customer/DepositView.vue') },
+    // Waitlist (FR-15): join from UI-C2 (?shop=&service=&barber=&date=) and claim offers. Runs its own OTP step.
     { path: '/waitlist', name: 'waitlist', component: () => import('@/views/customer/WaitlistView.vue') },
+    // Customer bookings (FR-04, FR-05). The view runs its own fresh-OTP step; the server re-checks it.
     { path: '/my-bookings', name: 'my-bookings', component: () => import('@/views/customer/MyBookingsView.vue') },
     // Barber schedule (FR-08): barbers see their own day, owners pick any barber in their shop.
-    { path: '/staff/schedule', name: 'schedule', component: () => import('@/views/staff/ScheduleView.vue'), meta:{ requiresStaff: true }, },
-    { path: '/staff/queue', name: 'queue', component: () => import('@/views/staff/QueueView.vue'), meta: { requiresStaff: true } },
+    {
+      path: '/staff/schedule',
+      name: 'schedule',
+      component: () => import('@/views/staff/ScheduleView.vue'),
+      meta: { requiresStaff: true },
+    },
+    // Queue management (FR-10): barbers see only their own queue, owners pick a barber.
+    {
+      path: '/staff/queue',
+      name: 'queue',
+      component: () => import('@/views/staff/QueueView.vue'),
+      meta: { requiresStaff: true },
+    },
     // Shop dashboard (FR-14): owner only; barbers are redirected to their schedule by the guard below.
-    { path: '/staff/dashboard', name: 'dashboard', component: () => import('@/views/staff/DashboardView.vue'), meta: { requiresOwner: true }, },
-    { path: '/staff/config', name: 'shop-config', component: () => import('@/views/staff/ShopConfigView.vue'), meta: { requiresOwner: true }, },
+    {
+      path: '/staff/dashboard',
+      name: 'dashboard',
+      component: () => import('@/views/staff/DashboardView.vue'),
+      meta: { requiresOwner: true },
+    },
+    { path: '/login', name: 'login', component: () => import('@/views/staff/SignInView.vue') },
+    {
+      path: '/staff/config',
+      name: 'shop-config',
+      component: () => import('@/views/staff/ShopConfigView.vue'),
+      meta: { requiresOwner: true },
+    },
   ],
 })
 

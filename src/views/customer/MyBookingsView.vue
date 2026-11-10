@@ -10,7 +10,7 @@ import { httpsCallable } from 'firebase/functions'
 import { useRouter } from 'vue-router'
 import { db, functions } from '@/firebase'
 import { dateOptions, formatDate, formatTime, freeSlots, sgDateKey, toIntervals, weekdayOf } from '@/lib/slots'
-import { normalizeSgMobile, otpErrorMessage, sendOtp, verifyOtp } from '@/lib/customerAuth'
+import { normalizeSgMobile, otpErrorMessage, sendOtp, signedInAs, verifyOtp } from '@/lib/customerAuth'
 import { historyItems, historyLabel, pendingPaymentItems, resolveRebook, upcomingItems } from '@/lib/history'
 import { countdown, depositAmountCents, money as depositMoney } from '@/lib/deposit'
 import { draft, resetDraft } from '@/stores/booking'
@@ -142,6 +142,15 @@ async function onSendCode() {
   else if (!e164) errors.value = { phone: 'Enter a Singapore mobile number: 8 digits starting with 8 or 9.' }
   else errors.value = {}
   if (errors.value.phone) return
+  const signedIn = signedInAs(e164)
+  if (signedIn) {
+    // Already verified on this device: open the list. Cancel or reschedule still asks for a new code if the
+    // last one is older than 10 minutes (REAUTH_REQUIRED, decisions A3).
+    uid.value = signedIn.uid
+    step.value = 'list'
+    listen()
+    return
+  }
   pending.value = true
   try {
     await sendOtp(e164, 'recaptcha-container')
@@ -228,6 +237,9 @@ const moveSlots = computed(() => {
 })
 
 watch(moveSlots, (list) => {
+  // FR-04: during our own reschedule the listener moves b.start to the chosen time, which drops it from the list.
+  // That is not someone else taking it; real SLOT_TAKEN answers are handled in run().
+  if (pending.value || action.value?.type !== 'move') return
   if (move.start && move.loaded && !list.includes(move.start)) {
     move.start = null
     formError.value = 'That time is no longer available. Please choose another.'
@@ -316,7 +328,12 @@ async function onMove(b) {
   if (!move.start) { errors.value = { slot: 'Choose a new time.' }; return }
   errors.value = {}
   const ok = await run(() => reschedule({ requestId: b.id, newStart: move.start }))
-  if (ok) { action.value = null; notice.value = 'Your booking was moved.' }
+  if (ok) {
+    move.start = null
+    formError.value = ''
+    action.value = null
+    notice.value = 'Your booking was moved.'
+  }
 }
 </script>
 
