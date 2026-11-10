@@ -237,6 +237,9 @@ const moveSlots = computed(() => {
 })
 
 watch(moveSlots, (list) => {
+  // FR-04: during our own reschedule the listener moves b.start to the chosen time, which drops it from the list.
+  // That is not someone else taking it; real SLOT_TAKEN answers are handled in run().
+  if (pending.value || action.value?.type !== 'move') return
   if (move.start && move.loaded && !list.includes(move.start)) {
     move.start = null
     formError.value = 'That time is no longer available. Please choose another.'
@@ -325,7 +328,12 @@ async function onMove(b) {
   if (!move.start) { errors.value = { slot: 'Choose a new time.' }; return }
   errors.value = {}
   const ok = await run(() => reschedule({ requestId: b.id, newStart: move.start }))
-  if (ok) { action.value = null; notice.value = 'Your booking was moved.' }
+  if (ok) {
+    move.start = null
+    formError.value = ''
+    action.value = null
+    notice.value = 'Your booking was moved.'
+  }
 }
 </script>
 
