@@ -106,6 +106,7 @@ async function openConfirmation(endpoint) {
       otpErrorMessage: (error) => error.message,
       sendOtp: async () => {},
       verifyOtp: async () => { otpCalls++ },
+      signedInAs: () => null,
     },
     '@/stores/booking': { draft, newAttempt: () => { draft.hold = null } },
   }
