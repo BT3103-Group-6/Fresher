@@ -10,7 +10,7 @@ import { httpsCallable } from 'firebase/functions'
 import { useRoute, useRouter } from 'vue-router'
 import { auth, db, functions } from '@/firebase'
 import { dateOptions, formatDate, formatTime } from '@/lib/slots'
-import { normalizeSgMobile, otpErrorMessage, sendOtp, verifyOtp } from '@/lib/customerAuth'
+import { normalizeSgMobile, otpErrorMessage, sendOtp, signedInAs, verifyOtp } from '@/lib/customerAuth'
 import { countdown, money } from '@/lib/deposit'
 import {
   STATE_LABELS, STATE_MESSAGES, canClaim, claimErrorMessage, entryState, expiredText, sortEntries, toEntry, validateJoin,
@@ -135,6 +135,8 @@ async function onSendCode() {
   else if (!e164) errors.value = { phone: 'Enter a Singapore mobile number: 8 digits starting with 8 or 9.' }
   else errors.value = {}
   if (errors.value.phone) return
+  const signedIn = signedInAs(e164)
+  if (signedIn) return enter(signedIn.uid) // already verified on this device: no new code
   pending.value = true
   try {
     await sendOtp(e164, 'recaptcha-container')
