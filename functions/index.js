@@ -1,20 +1,17 @@
 const {setGlobalOptions} = require("firebase-functions");
-const {initializeApp} = require("firebase-admin/app");
 const {HttpsError, onCall, onRequest} = require("firebase-functions/https");
 const {onSchedule} = require("firebase-functions/scheduler");
-const {getAuth} = require("firebase-admin/auth");
-const {getFirestore} = require("firebase-admin/firestore");
 const {onDocumentWritten} = require("firebase-functions/firestore");
 const {defineSecret} = require("firebase-functions/params");
+const {initializeApp} = require("firebase-admin/app");
+const {getAuth} = require("firebase-admin/auth");
+const {getFirestore} = require("firebase-admin/firestore");
 
 // Cost control: cap concurrent containers per function.
 setGlobalOptions({region: "asia-southeast1", maxInstances: 10});
 
 initializeApp();
 
-// Integration (docs/team-plan.md): each story's PR adds its own requires,
-// helpers and export blocks verbatim from the prototype. PR-19 restores the
-// prototype file exactly.
 // Demo mode and App Check (decisions A17): every callable enforces App Check
 // outside the emulator; the mock checkout and the postal stub need demo mode.
 const demo = require("./demo");
@@ -177,13 +174,15 @@ exports.summarizeShopServices = onDocumentWritten(
       await shopRef.update(
           discovery.summarizeServices(services.docs.map((d) => d.data())));
     });
+
+// FR-08: personal time blocks (staff only; decisions A12). Existing bookings
+// are never cancelled; createBlock returns them as conflicts.
 const blocks = require("./blocks");
 exports.createBlock =
   onCall(APP_CHECK, (request) => blocks.createBlock(request));
 exports.removeBlock =
   onCall(APP_CHECK, (request) => blocks.removeBlock(request));
 
-// FR-12: no shows
 const service = require("./service");
 exports.startService =
   onCall(APP_CHECK, (request) => service.startService(request));
@@ -194,6 +193,12 @@ exports.markNoShow =
 exports.reverseNoShow =
   onCall(APP_CHECK, (request) => service.reverseNoShow(request));
 
+// FR-14: keep shops/{shopId}/dailyStats current (idempotent; decisions A7).
+const stats = require("./stats");
+exports.onAppointmentWritten = onDocumentWritten(
+    "appointments/{appointmentId}",
+    (event) => stats.onAppointmentWritten(event));
+
 // FR-09: every minute, send due notification tasks (mock provider) and move
 // expired HELD appointments to EXPIRED (decisions A4 addendum; resolves L2).
 const sweep = require("./sweep");
@@ -201,6 +206,17 @@ const messaging = require("./messaging");
 exports.processNotifications = onSchedule(
     {schedule: "every 1 minutes", timeZone: "Asia/Singapore"},
     () => sweep.runAll(getFirestore(), messaging.mockProvider()));
+
+// FR-10: walk-in queue. The delay recalculation also runs inside startService
+// and finishService and in the sweep above (decisions A5 addendum).
+const queue = require("./queue");
+exports.addWalkIn = onCall(APP_CHECK, (request) => queue.addWalkIn(request));
+exports.startWalkIn =
+  onCall(APP_CHECK, (request) => queue.startWalkIn(request));
+exports.finishWalkIn =
+  onCall(APP_CHECK, (request) => queue.finishWalkIn(request));
+exports.removeWalkIn =
+  onCall(APP_CHECK, (request) => queue.removeWalkIn(request));
 
 // Dev only: the emulator does not fire schedules, so this runs one sweep on
 // demand (`npm run sweep`). It is not exported outside the Functions emulator,
@@ -215,16 +231,6 @@ if (process.env.FUNCTIONS_EMULATOR === "true") {
   });
 }
 
-// FR-10: walk-in queue. The delay recalculation also runs inside startService
-// and finishService and in the sweep above (decisions A5 addendum).
-const queue = require("./queue");
-exports.addWalkIn = onCall(APP_CHECK, (request) => queue.addWalkIn(request));
-exports.startWalkIn =
-  onCall(APP_CHECK, (request) => queue.startWalkIn(request));
-exports.finishWalkIn =
-  onCall(APP_CHECK, (request) => queue.finishWalkIn(request));
-exports.removeWalkIn =
-  onCall(APP_CHECK, (request) => queue.removeWalkIn(request));
 // FR-13: deposits (decisions A6 addendum). createDeposit registers the payment
 // with the mock provider; paymentWebhook applies the provider's signed events
 // (HTTPS, not a callable: the provider signs the raw body). The secret falls
@@ -266,9 +272,3 @@ exports.claimOffer = onCall(APP_CHECK, (request) =>
 exports.offerFreedTime = onDocumentWritten(
     "shops/{shopId}/schedules/{scheduleId}",
     (event) => waitlist.onScheduleWritten(event, getFirestore()));
-
-// FR-14: keep shops/{shopId}/dailyStats current (idempotent; decisions A7).
-const stats = require("./stats");
-exports.onAppointmentWritten = onDocumentWritten(
-    "appointments/{appointmentId}",
-    (event) => stats.onAppointmentWritten(event));
