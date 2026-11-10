@@ -1,7 +1,7 @@
 # Fresher — Public demo deployment runbook
 
 Decision: A17 in `docs/decisions.md`. Project `fresher-6d857` (alias `prod`), Blaze plan, region `asia-southeast1`.
-**The demo is shared through an expiring Hosting preview channel** (`https://fresher-6d857--demo-<random>.web.app`), not the live `fresher-6d857.web.app` address, which is never deployed. **App Check: console steps done; deploy and callable check pending (L1).** The reCAPTCHA Enterprise key exists and is registered, and the repository no longer switches App Check off, but it is not on in any deployment until the preview channel deploy and the checks in "Turning App Check on" are done. Until then the backend is open to any client that knows the URL: keep the link among friends and let the channel expire.
+**Testing uses an expiring Hosting preview channel** (`https://fresher-6d857--demo-<random>.web.app`). **The final demo (Wed 11 Nov) runs on the live `https://fresher-6d857.web.app`**, deployed once after the code freeze; see "Final demo deploy to the live site". **App Check is on** in both (L1): the web build sends an App Check token and every callable rejects calls without one (HTTP 401).
 **You run every command below yourself.** Claude Code does not deploy and does not touch the production project.
 
 This is a **demo**: SMS and payments are mocked, customers sign in with Firebase test phone numbers, and demo mode is on. **The site carries no demo banner**: only the landing page footer (mock data and messages) and the "Test mode" note on the deposit checkout say so. Tell friends this is a demo, which postal codes work (`160055`, `520478`, `600135`) and which test phone number and code each of them uses.
@@ -46,7 +46,7 @@ This is a **demo**: SMS and payments are mocked, customers sign in with Firebase
 Follow "Turning App Check on" at the end. The reCAPTCHA Enterprise key is created and registered under App Check (done); put its key ID in `.env.local` as `VITE_APP_CHECK_SITE_KEY`. The production build fails without it. Add the preview channel host to the key once the channel exists (Part 4). Until the deploy and checks are done, App Check is not on.
 
 ### 4. Budget and APIs
-- [ ] **Google Maps key** for the landing page map (decisions A20, L46): Google Cloud console (project `fresher-6d857`) -> APIs & Services -> enable **Maps JavaScript API** -> Credentials -> Create API key. Restrict it: *Application restrictions* = Websites, allowing `http://localhost:5173/*` and the exact preview channel host (add it after the first channel deploy, as with Authorized domains); *API restrictions* = Maps JavaScript API only. The Maps API needs the billing account linked; add a budget alert for it. Put the key in `.env.local` as `VITE_GOOGLE_MAPS_API_KEY` (not committed). Without the key the app still builds and the map section shows the list view.
+- [ ] **Google Maps key** for the landing page map (decisions A20, L46): Google Cloud console (project `fresher-6d857`) -> APIs & Services -> enable **Maps JavaScript API** -> Credentials -> Create API key. Restrict it: *Application restrictions* = Websites, allowing `http://localhost:5173/*`, `https://fresher-6d857.web.app/*`, `https://fresher-6d857.firebaseapp.com/*` and the exact preview channel host (add it after the first channel deploy, as with Authorized domains; a missing host shows `RefererNotAllowedMapError` in the console and the map falls back to the list); *API restrictions* = Maps JavaScript API only. The Maps API needs the billing account linked; add a budget alert for it. Put the key in `.env.local` as `VITE_GOOGLE_MAPS_API_KEY` (not committed). Without the key the app still builds and the map section shows the list view.
 - [ ] **Map ID and map style** (decisions A20, L48; needed for the decluttered look, and for Advanced Markers to be styled). In the same Cloud project: Google Maps Platform -> **Map Management** (the label may read "Map management" in the sidebar; Google renames things now and then).
   1. **Create a Map ID:** Map IDs -> *Create Map ID*. Name `fresher-landing`; Map type **JavaScript**; Map type option **Vector** (raster also works); leave tilt and rotation off. Save. Copy the Map ID.
   2. **Create the style:** Map Styles -> *Create style*. Start from the default (Standard) map. In the style editor:
@@ -74,11 +74,11 @@ npx -y firebase-tools@latest use --add          # choose fresher-6d857, alias: p
 `.env.production` and `functions/.env.prod` already exist for this demo (nothing to type). Check they read:
 
 ```sh
-cat .env.production        # VITE_DEMO_MODE=true  VITE_APP_CHECK_ENABLED=false
-cat functions/.env.prod    # DEMO_MODE=true  APP_CHECK_ENFORCE=false  (APP_BASE_URL is added in Part 4)
+cat .env.production        # VITE_DEMO_MODE=true  (no VITE_APP_CHECK_ENABLED line: App Check is on)
+cat functions/.env.prod    # DEMO_MODE=true  (no APP_CHECK_ENFORCE line; APP_BASE_URL is added in Part 4)
 ```
 
-`.env.local` keeps the four real `VITE_FIREBASE_*` lines. No App Check site key is needed.
+`.env.local` (never committed) holds the four real `VITE_FIREBASE_*` lines plus `VITE_APP_CHECK_SITE_KEY`, `VITE_GOOGLE_MAPS_API_KEY` and `VITE_GOOGLE_MAP_ID`, one `NAME=value` per line. Without the Maps key the landing page says the map is not set up; check `VITE_FIREBASE_API_KEY` holds one 39-character key (a key pasted twice fails with `API_KEY_INVALID` and breaks App Check and phone sign-in).
 
 Check the emulators still ignore the production file: start them as usual and confirm the log line "Loaded environment variables from …" does **not** list `.env.prod`, and that a search on `/` in dev still works.
 
@@ -122,7 +122,7 @@ SEED_STAFF_PASSWORD='<a strong password, 12+ chars>' \
   npm run seed:live -- --confirm-live=fresher-6d857
 ```
 
-Share the preview URL only after step 4. Never run a bare `firebase deploy` (it would also push the Auth provider block in `firebase.json` and the live site); always pass `--only` or use `hosting:channel:deploy`. Do not run `deploy --only hosting`: that publishes to the live `fresher-6d857.web.app`.
+Share the preview URL only after step 4. Never run a bare `firebase deploy` (it would also push the Auth provider block in `firebase.json` and the live site); always pass `--only` or use `hosting:channel:deploy`. Do not run `deploy --only hosting` (it publishes to the live `fresher-6d857.web.app`) except once, for the final demo, as in "Final demo deploy to the live site".
 
 The build guard fails when `VITE_FIREBASE_*` is missing or starts with `demo-`, and, only when `VITE_APP_CHECK_ENABLED` is not `false`, when `VITE_APP_CHECK_SITE_KEY` is missing. It does not require `VITE_DEMO_MODE`.
 
@@ -144,7 +144,8 @@ To sign in as a showcase customer, add these as **test phone numbers** (Console 
 
 ## Part 6 — First deploy checks (tick these, then mark L20 and L33 resolved)
 
-- [ ] The preview URL loads on `/`, `/my-bookings` and `/staff/config` (no demo banner, by decision). `https://fresher-6d857.web.app` itself is **not** deployed (Hosting shows the default page or nothing).
+- [ ] The preview URL loads on `/`, `/my-bookings` and `/staff/config` (no demo banner, by decision). For the final demo the same checks run on `https://fresher-6d857.web.app` (see "Final demo deploy to the live site").
+- [ ] Before building: `.env.local` has both `VITE_GOOGLE_MAPS_API_KEY` and `VITE_GOOGLE_MAP_ID`; after building, the Maps key is in `dist/assets/googleMap-*.js`.
 - [ ] Landing page map (L47): scroll to "Barbers across Singapore": Google map loads only then (Network shows no `maps.googleapis.com` request before), pins and clusters show, Tab reaches a pin and Enter opens the card, one finger scrolls the page on a phone, and "View as list" lists all shops. A `RefererNotAllowedMapError` in the console means the channel host is missing from the key's referrers.
 - [ ] Phone sign-in on the preview URL works with a test number (no `auth/unauthorized-domain`).
 - [ ] App Check (L1): devtools -> Network shows `X-Firebase-AppCheck` on callable requests, and booking, staff sign-in and `addBarber` still work. A direct call without a token is rejected (step 5 of "Turning App Check on").
@@ -155,6 +156,23 @@ To sign in as a showcase customer, add these as **test phone numbers** (Console 
 - [ ] Cloud Scheduler has a `processNotifications` job in `asia-southeast1`, and Functions logs show a run every minute (L20).
 - [ ] Deposit flow: a customer with two no-shows sees the mock checkout and "pay" completes it (needs a customer with two no-shows; `seed:fr13` is emulator-only, so create the case by marking two of a test customer's bookings no-show as the owner). `mockPay` works only because demo mode is on.
 - [ ] Budget alert email works; check Billing → Reports after a day (the once-a-minute sweep is the steady cost).
+
+## Final demo deploy to the live site (Wed 11 Nov)
+
+Once, after the code freeze, with two people. Deploy from `main` once #19 (App Check on) is merged; `main` without it still has `VITE_APP_CHECK_ENABLED=false` and every callable would answer 401. Post in the group before each deploy.
+
+- [ ] `.env.local`: the seven values above. `.env.production` has no `VITE_APP_CHECK_ENABLED` line.
+- [ ] Maps key website restrictions include `https://fresher-6d857.web.app/*` and `https://fresher-6d857.firebaseapp.com/*`.
+- [ ] reCAPTCHA key (Security -> reCAPTCHA -> the key -> Domains) lists `fresher-6d857.web.app` and `fresher-6d857.firebaseapp.com`. A missing domain makes every callable fail with 401.
+- [ ] Authentication -> Settings -> Authorized domains lists both (they are there by default).
+- [ ] `functions/.env.prod`: `DEMO_MODE=true` and `APP_BASE_URL=https://fresher-6d857.web.app`, no `APP_CHECK_ENFORCE=false`.
+- [ ] Build and check: `npm run build`; the Maps key is in `dist/assets/googleMap-*.js`; the dev sign-in hint is not in the bundle (PowerShell: `Select-String -Path dist\assets\*.js -Pattern "owner@shop-jurong" -SimpleMatch -List` prints nothing; sh: `grep -rl owner@shop-jurong dist/` prints nothing).
+- [ ] `npx -y firebase-tools@latest deploy --only functions --project prod`. New callables need the deployer to have **Cloud Functions Admin** (or Owner); with Editor only, they fail with "Unable to set the invoker for the IAM policy".
+- [ ] `npx -y firebase-tools@latest deploy --only hosting --project prod` (the one time this is used). The output ends with `Hosting URL: https://fresher-6d857.web.app`.
+- [ ] Live seed (Part 5) with `--overwrite` and the **same** `SEED_STAFF_PASSWORD` as before (it resets every staff login to it). The demo bookings are dated from the seed day, so reseed close to the demo. Needs Application Default Credentials (`gcloud auth application-default login`, then `gcloud auth application-default set-quota-project fresher-6d857`).
+- [ ] Showcase customer numbers `+65 8000 0101` to `0108` are Firebase test phone numbers.
+- [ ] The Part 6 checks on `https://fresher-6d857.web.app` in Chrome (Firefox's tracking protection can block the phone sign-in reCAPTCHA), and the 401 check from "Turning App Check on".
+- [ ] Rollback if it breaks: Firebase console -> Hosting -> release history -> Roll back.
 
 ## Rollback and turning things off
 
