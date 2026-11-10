@@ -2,7 +2,7 @@
 // UI-C3 Verify and confirm (FR-03). The slot is already held (holdSlot); the customer gives a name and
 // a Singapore mobile, proves the number with an SMS OTP (Firebase Phone Auth), and confirmBooking turns
 // the hold into a booking. The mobile number is read from the verified token on the server.
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { doc, getDoc } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
@@ -32,6 +32,7 @@ const verified = ref(false) // OTP accepted; a failed confirmBooking can be retr
 const confirmed = ref(null)
 const now = ref(Date.now())
 const online = ref(navigator.onLine)
+const doneHeading = ref(null)
 
 const remainingMs = computed(() => Math.max(0, hold.holdExpiresAt - now.value))
 const expired = computed(() => step.value !== 'done' && remainingMs.value === 0)
@@ -100,7 +101,12 @@ function validateDetails() {
 
 async function onSendCode() {
   formError.value = ''
-  if (!validateDetails()) return
+  if (!validateDetails()) {
+    // NFR-06 (issue 7): move focus to the first invalid field so its error is read out.
+    await nextTick()
+    document.querySelector(errors.value.name ? '#name' : '#phone')?.focus()
+    return
+  }
   pending.value = true
   try {
     await sendOtp(normalizeSgMobile(draft.phone), 'recaptcha-container')
@@ -118,6 +124,8 @@ async function onConfirm() {
   formError.value = ''
   if (!verified.value && !/^\d{6}$/.test(code.value.trim())) {
     errors.value = { code: 'Enter the 6-digit code.' }
+    await nextTick() // NFR-06 (issue 7)
+    document.querySelector('#code')?.focus()
     return
   }
   errors.value = {}
@@ -150,6 +158,9 @@ async function onConfirm() {
       return await router.replace({ name: 'deposit', params: { requestId: data.requestId } })
     }
     step.value = 'done'
+    // NFR-06 (issue 10): focus the confirmation heading so screen readers announce that the booking succeeded.
+    await nextTick()
+    doneHeading.value?.focus()
   } catch (err) {
     const reason = err.details?.reason
     if (reason === 'HOLD_EXPIRED' || reason === 'HOLD_NOT_FOUND') {
@@ -179,7 +190,7 @@ async function onChooseAnother() {
     <template v-if="step === 'done'">
       <header class="page-head">
         <p class="badge ok" role="status"><span aria-hidden="true">✓ </span>Status: Confirmed</p>
-        <h1>Booking confirmed</h1>
+        <h1 ref="doneHeading" tabindex="-1">Booking confirmed</h1>
         <p class="lede">See you soon. Your details are below.</p>
       </header>
       <section class="card panel" aria-labelledby="done-h">
@@ -280,6 +291,8 @@ async function onChooseAnother() {
 .page-head { margin-bottom: var(--space-5); padding-top: var(--space-3); }
 .page-head h1 { font-size: clamp(1.9rem, 6vw, 2.8rem); line-height: 1.1; letter-spacing: -0.03em; margin-bottom: var(--space-2); }
 .page-head .badge { margin-bottom: var(--space-3); }
+/* The heading takes focus only from script (NFR-06) and is not a control, so it gets no focus ring. */
+.page-head h1[tabindex='-1']:focus { outline: none; }
 
 .panel { padding: var(--space-4) var(--space-4) var(--space-5); margin-bottom: var(--space-5); }
 .panel h2 { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); }
