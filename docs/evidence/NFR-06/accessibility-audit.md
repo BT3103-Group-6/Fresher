@@ -128,7 +128,7 @@ None of these is an accessibility issue.
 |---|---|---|---|---|---|
 | 7 | Guest verify (details and code steps) | Errors appear silently: focus stays on the submit button and the error spans are not live regions, so a screen-reader user hears nothing (as issue 3). Confirmed by the VoiceOver pass on 9 Nov | Moderate | Haziq (FR-03, `VerifyView`) | Fixed in PR #41 (focus moves to the first invalid field, and to the Booking confirmed heading). Re-tested with VoiceOver on 9 Nov: all three now announced. |
 | 8 | My bookings (phone step, code step, reschedule panel) | Errors appear silently, as issue 7 | Moderate | Alson (FR-04, `MyBookingsView`) | Open |
-| 9 | Staff Schedule, "Block personal time" form | Errors appear silently, as issue 7 | Moderate | Francis (FR-08, `ScheduleView`) | Open |
+| 9 | Staff Schedule, "Block personal time" form | Errors appear silently, as issue 7 | Moderate | Francis (FR-08, `ScheduleView`) | Fixed in #50 |
 | 10 | Booking confirmed | After Confirm booking, focus is left on the page body, and the "Status: Confirmed" `role="status"` badge is inserted together with the page, so it may not be announced. A screen-reader user may not learn that the booking succeeded. Confirmed by the VoiceOver pass on 9 Nov: the confirmation was not announced | Moderate (raised from Minor on 9 Nov) | Haziq (FR-03, `VerifyView`) | Fixed in PR #41 (focus moves to the first invalid field, and to the Booking confirmed heading). Re-tested with VoiceOver on 9 Nov: all three now announced. |
 
 The landing and shop-page errors are announced through `role="alert"`, so they are not counted as issues, although focus stays on the button there too.
@@ -160,7 +160,7 @@ Tester: Firas, on Mon 9 Nov 2026.
 **Outcome.**
 - **Issue 7 is confirmed.** Moderate.
 - **Issue 10 is confirmed** and raised from Minor to Moderate.
-- **Issues 8 and 9 are unchanged.** They remain automated findings only: My bookings and the staff Schedule screen were not part of this pass.
+- **Issue 8 remains open.** They remain automated findings only: My bookings and the staff Schedule screen were not part of this pass.
 
 Before the fix, a screen-reader user could fill in the details, but was not told when a step failed or when the booking succeeded.
 

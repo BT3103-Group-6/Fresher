@@ -4,7 +4,7 @@
 // passed is shown as expired, never as a live booking (limitation L2). Blocks are written by the
 // createBlock/removeBlock callables; they may overlap existing bookings, which are listed, never cancelled.
 // Each booking also shows its reminder status (FR-09), read from the notifications the scheduled job maintains.
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { Timestamp, collection, getDocs, onSnapshot, query, where } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import { db, functions } from '@/firebase'
@@ -147,13 +147,24 @@ watch(dateKey, (k) => { form.dateKey = k })
 watch(barberId, (b) => { if (!form.barberId || ownerMode) form.barberId = b }, { immediate: true })
 watch(() => [form.barberId, form.dateKey, form.start, form.end, form.reason], () => { blockId = null })
 
+async function focusFirstError() {
+  await nextTick() // wait for Vue to draw the error messages
+  const first = ['barber', 'date', 'start', 'end', 'reason'].find((k) => errors.value[k])
+  if (!first) return
+  const el = first === 'barber' ? document.querySelector('input[name="f-barber"]') : document.getElementById(`f-${first}`)
+  el?.focus()
+}
+
 const fieldErrors = { start: 'start', end: 'end', reason: 'reason', barberId: 'barber' }
 async function onCreate() {
   formError.value = ''
   saved.value = null
   errors.value = validateBlockForm({ dateKey: form.dateKey, start: form.start, end: form.end }, Date.now())
   if (ownerMode && !form.barberId) errors.value.barber = 'Choose a barber.'
-  if (Object.keys(errors.value).length) return
+  if (Object.keys(errors.value).length) {
+    await focusFirstError()
+    return
+  }
   pending.value = true
   blockId ??= crypto.randomUUID()
   try {
@@ -177,6 +188,7 @@ async function onCreate() {
     else if (err.code === 'functions/invalid-argument' && d.field) errors.value = { [fieldErrors[d.field] ?? 'start']: err.message }
     else if (err.code === 'functions/permission-denied') formError.value = 'You can only block your own time.'
     else formError.value = 'Could not save the block. Your entries are kept. Check your connection and try again.'
+    if (Object.keys(errors.value).length) await focusFirstError()
   } finally {
     pending.value = false
   }
