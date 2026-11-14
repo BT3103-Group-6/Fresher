@@ -4,7 +4,7 @@
 // passed is shown as expired, never as a live booking (limitation L2). Blocks are written by the
 // createBlock/removeBlock callables; they may overlap existing bookings, which are listed, never cancelled.
 // Each booking also shows its reminder status (FR-09), read from the notifications the scheduled job maintains.
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { Timestamp, collection, getDocs, onSnapshot, query, where } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import { db, functions } from '@/firebase'
@@ -153,7 +153,14 @@ async function onCreate() {
   saved.value = null
   errors.value = validateBlockForm({ dateKey: form.dateKey, start: form.start, end: form.end }, Date.now())
   if (ownerMode && !form.barberId) errors.value.barber = 'Choose a barber.'
-  if (Object.keys(errors.value).length) return
+  if (Object.keys(errors.value).length) {
+    await nextTick() // wait for Vue to draw the error messages
+    const order = ['barber', 'date', 'start', 'end', 'reason'] // same order as the fields on the page
+    const first = order.find((k) => errors.value[k])
+    const target = first === 'barber' ? document.querySelector('input[name="f-barber"]') : document.getElementById(`f-${first}`)
+    target?.focus()
+    return
+  }
   pending.value = true
   blockId ??= crypto.randomUUID()
   try {
