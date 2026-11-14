@@ -37,7 +37,7 @@ Every record is built by `auditRecord()` in `functions/booking.js` and written i
 | 11 | `noShow` | CONFIRMED → NO_SHOW | staff | `functions/service.js` | auto ID |
 | 12 | `noShowReversed` | NO_SHOW → CONFIRMED | staff | `functions/service.js` | auto ID |
 
-## 3. Transitions arriving with the chain PRs (from the `prototype` tag)
+## 3. Transitions arriving with later PRs
 
 | PR | Action | From → to | Actor | Where |
 |---|---|---|---|---|
