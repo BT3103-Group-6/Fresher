@@ -28,7 +28,7 @@ All amounts use **US$1 = S$1.2789** (mid-market, 2 Nov 2026).
 
 **Server side (counted from code).** The Admin SDK talks to the emulator over gRPC, which the browser cannot see. Reads and writes are counted from `functions/booking.js`, `functions/notifications.js` and `functions/index.js` on this branch. The documents the two callables should write were then checked in the emulator, and all of them exist (appointment, barber-day schedule, `auditLog/{id}_HELD`, `auditLog/{id}_CONFIRMED`, `customers/{uid}`, and the confirmation and 2-hour reminder tasks; the 24-hour reminder was correctly skipped because the slot was less than 24 hours away).
 
-**Not on this branch.** The scheduled sweep (reminders, expired holds, waitlist, queue delays), the `dailyStats` trigger and the waitlist trigger arrive with later PRs. Their costs are counted from the `prototype` tag (`git show prototype:functions/sweep.js`, `stats.js`, `queue.js`, `waitlist.js`).
+**Not yet merged at the time.** The scheduled sweep (reminders, expired holds, waitlist, queue delays), the `dailyStats` trigger and the waitlist trigger arrived with later PRs. Their costs are counted from their code (`functions/sweep.js`, `stats.js`, `queue.js`, `waitlist.js`), now on `main`.
 
 ### 1.1 Measured: one booking, browser reads
 
@@ -57,7 +57,7 @@ The run was at about 20:30, after the shops had closed, so each next-slot lookup
 
 **One booking, end to end of the customer flow: 153 reads, 10 writes.**
 
-### 1.3 Counted from code: the rest of the booking's life (prototype tag)
+### 1.3 Counted from code: the rest of the booking's life
 
 | Item | Reads | Writes | Notes |
 |---|---|---|---|
@@ -71,7 +71,7 @@ The run was at about 20:30, after the shops had closed, so each next-slot lookup
 
 **Per booking excluding the queue sweep: about 191 reads and 24 writes.**
 
-### 1.4 The queue sweep (prototype, runs every minute)
+### 1.4 The queue sweep (runs every minute)
 
 `sweepQueueDelays` (FR-10, L33) runs in `processNotifications` every minute. It reads every `CONFIRMED`/`IN_SERVICE` appointment starting from 12 hours ago to 24 hours ahead, then, for each barber found, reads all of that barber's appointments in the same window and their live queue entries. A booking therefore stays in the window for about 36 hours (2,160 runs) and is read about twice per run, even when nothing has changed.
 
@@ -104,7 +104,7 @@ Prices checked on **2 Nov 2026**. "Confirmed" means read on the official page th
 | Confirmation and reminder SMS (Twilio, outbound to Singapore) | **$0.0591 per segment**, "pricing current as of October 2026"; one segment per message assumed | Confirmed. **Carrier fees may apply and are not included** | [twilio.com/en-us/sms/pricing/sg](https://www.twilio.com/en-us/sms/pricing/sg) |
 | Google Maps (Dynamic Maps, Maps JavaScript API) | 10,000 loads/month free, then $7.00 per 1,000 (up to 100,000) | Confirmed | [developers.google.com/maps/billing-and-pricing/pricing](https://developers.google.com/maps/billing-and-pricing/pricing) |
 
-Twilio is used as a stand-in: the prototype's messaging provider is a mock (L4) and no provider has been chosen.
+Twilio is used as a stand-in: Fresher's messaging provider is a mock (L4) and no provider has been chosen.
 
 ---
 
@@ -140,7 +140,7 @@ To stay under S$5 with SMS at about S$0.076 each (Twilio), a shop could send abo
 - **Hosting:** 360 MB a day (about 10.8 GB a month) covers about 60 shops.
 - **Maps:** 10,000 loads a month covers about 16 shops at one map load per visit.
 - **Phone Auth:** 10 free SMS a day (about 300 a month) covers about 1.4 shops' OTPs.
-- **Functions:** the free invocations and compute easily cover the prototype.
+- **Functions:** the free invocations and compute easily cover the demo.
 
 The demo deployment will very likely cost nothing. This does not change the per-shop answer at scale.
 
@@ -169,7 +169,7 @@ Example: OTP for first-time customers only (assume 30% of bookings, with 10% res
 
 | # | Where | Reads | Recommendation |
 |---|---|---|---|
-| 1 | **Open.** **Queue sweep** re-reads every live appointment in a 36-hour window, about twice a minute (`sweepQueueDelays` + `recalcBarber`/`loadState`, prototype `functions/queue.js`; L33) | about 864,000 per shop per month; more than 95% of the Firestore cost | **Fix.** Only recalculate barbers whose state can have changed: something in service, a live walk-in queue, or a booking whose start has passed. Or skip a barber whose appointments and queue have not changed since the last run. L33 already lists the first option. **Owner: Alson (FR-10, PR-17).** |
+| 1 | **Open.** **Queue sweep** re-reads every live appointment in a 36-hour window, about twice a minute (`sweepQueueDelays` + `recalcBarber`/`loadState`, `functions/queue.js`; L33) | about 864,000 per shop per month; more than 95% of the Firestore cost | **Fix.** Only recalculate barbers whose state can have changed: something in service, a live walk-in queue, or a booking whose start has passed. Or skip a barber whose appointments and queue have not changed since the last run. L33 already lists the first option. **Owner: Alson (FR-10, PR-17).** |
 | 2 | **Verify screen** re-reads shop, service and barber (`VerifyView.vue`, 3 `getDoc`s) that the shop page's listeners loaded seconds earlier | 3 per booking | **Fix (low priority).** Pass the names from the shop page in the booking draft. Saves very little money but is exactly what NFR-07's third bullet rules out. **Owner: Haziq (`VerifyView`).** |
 | 3 | **Shop page** re-reads the shop doc, services and barbers that discovery's `shopDetail` cache already holds | 7 per booking | **Justify.** The shop page needs live listeners so a deactivated barber or service disappears at once (FR-07, checked on 2 Nov). The shop doc alone (1 read) could reuse the search result; not worth the extra code path |
 | 4 | **Shop page schedule listeners** re-read the barber-day schedules the next-slot lookup read | 2 per booking | **Justify.** Availability must be live (FR-02, NFR-03); the discovery cache is 60 seconds old by design |
@@ -190,7 +190,7 @@ Not measured in the emulator run:
 - **The shop map** (not scrolled into view in the run; about 50 reads per visitor who scrolls to it).
 - **My Bookings, cancel and reschedule** (each adds reads and writes to the bookings that use them).
 - **Staff start and finish:** estimated from the code, not measured.
-- **The sweep (reminders, holds, waitlist, queue), the `dailyStats` trigger and the waitlist trigger:** not on this branch; counted from the `prototype` tag.
+- **The sweep (reminders, holds, waitlist, queue), the `dailyStats` trigger and the waitlist trigger:** not yet merged at the time; counted from their code.
 - **Server-side reads and writes of `holdSlot` and `confirmBooking`:** counted from code. The written documents were checked in the emulator; the reads were not.
 
 ## 6. Other open points
