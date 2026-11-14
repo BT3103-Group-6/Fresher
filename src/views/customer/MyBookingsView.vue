@@ -26,6 +26,10 @@ const errors = ref({})
 const formError = ref('')
 const notice = ref('')
 const pending = ref(false)
+// FR-04: set when the server answers REAUTH_REQUIRED, so the next "Send code" really sends one (decisions A3).
+const mustReverify = ref(false)
+// Reuse an existing sign-in only if its OTP is younger than this; a margin under the server's 10 minutes (A3).
+const REUSE_SIGN_IN_MS = 9 * 60 * 1000
 const online = ref(navigator.onLine)
 const now = ref(Date.now())
 
@@ -143,9 +147,9 @@ async function onSendCode() {
   else errors.value = {}
   if (errors.value.phone) return
   const signedIn = signedInAs(e164)
-  if (signedIn) {
-    // Already verified on this device: open the list. Cancel or reschedule still asks for a new code if the
-    // last one is older than 10 minutes (REAUTH_REQUIRED, decisions A3).
+  if (signedIn && !mustReverify.value && (await signInIsFresh(signedIn))) {
+    // FR-04/FR-11: verified on this device less than 9 minutes ago, so open the list without a new code.
+    // Older sign-ins, or a REAUTH_REQUIRED answer from the server, fall through and send a code (decisions A3).
     uid.value = signedIn.uid
     step.value = 'list'
     listen()
@@ -174,6 +178,7 @@ async function onVerify() {
   pending.value = true
   try {
     const user = await verifyOtp(code.value.trim())
+    mustReverify.value = false
     uid.value = user.uid
     step.value = 'list'
     listen()
@@ -185,7 +190,18 @@ async function onVerify() {
   }
 }
 
+// FR-04: true when the current sign-in's OTP is under 9 minutes old. Any error counts as not fresh.
+async function signInIsFresh(user) {
+  try {
+    const { authTime } = await user.getIdTokenResult()
+    return Date.now() - Date.parse(authTime) < REUSE_SIGN_IN_MS
+  } catch {
+    return false
+  }
+}
+
 function needOtpAgain() {
+  mustReverify.value = true
   action.value = null
   unsubList?.()
   step.value = 'phone'
