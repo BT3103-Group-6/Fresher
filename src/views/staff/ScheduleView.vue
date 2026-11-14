@@ -147,6 +147,14 @@ watch(dateKey, (k) => { form.dateKey = k })
 watch(barberId, (b) => { if (!form.barberId || ownerMode) form.barberId = b }, { immediate: true })
 watch(() => [form.barberId, form.dateKey, form.start, form.end, form.reason], () => { blockId = null })
 
+async function focusFirstError() {
+  await nextTick() // wait for Vue to draw the error messages
+  const first = ['barber', 'date', 'start', 'end', 'reason'].find((k) => errors.value[k])
+  if (!first) return
+  const el = first === 'barber' ? document.querySelector('input[name="f-barber"]') : document.getElementById(`f-${first}`)
+  el?.focus()
+}
+
 const fieldErrors = { start: 'start', end: 'end', reason: 'reason', barberId: 'barber' }
 async function onCreate() {
   formError.value = ''
@@ -154,11 +162,7 @@ async function onCreate() {
   errors.value = validateBlockForm({ dateKey: form.dateKey, start: form.start, end: form.end }, Date.now())
   if (ownerMode && !form.barberId) errors.value.barber = 'Choose a barber.'
   if (Object.keys(errors.value).length) {
-    await nextTick() // wait for Vue to draw the error messages
-    const order = ['barber', 'date', 'start', 'end', 'reason'] // same order as the fields on the page
-    const first = order.find((k) => errors.value[k])
-    const target = first === 'barber' ? document.querySelector('input[name="f-barber"]') : document.getElementById(`f-${first}`)
-    target?.focus()
+    await focusFirstError()
     return
   }
   pending.value = true
@@ -184,6 +188,7 @@ async function onCreate() {
     else if (err.code === 'functions/invalid-argument' && d.field) errors.value = { [fieldErrors[d.field] ?? 'start']: err.message }
     else if (err.code === 'functions/permission-denied') formError.value = 'You can only block your own time.'
     else formError.value = 'Could not save the block. Your entries are kept. Check your connection and try again.'
+    if (Object.keys(errors.value).length) await focusFirstError()
   } finally {
     pending.value = false
   }
