@@ -3,7 +3,7 @@
 The team's **Scrum workbook is the source of truth**. This plan is built from it: the sprint dates, the sprint each story is in, each story's start and end dates and the story owners below come from the workbook (`BT3103 SCRUM with sprints`, Sprint 1 and Sprint 2 sheets, read 22 Oct 2026). File ownership, the pull-request order, target dates, branches and commands follow from those. If the workbook changes, update it first, then this file and `.github/CODEOWNERS`.
 
 - **Sprint 1: Wed 21 Oct – Fri 30 Oct 2026** (Fri 30 Oct is the sprint review). Setup, FR-01–08, FR-11, FR-12, NFR-04 and NFR-06.
-- **Sprint 2: Sat 31 Oct – Tue 10 Nov 2026.** FR-09, FR-10, FR-13, FR-14, FR-15, NFR-01, NFR-02, NFR-03, NFR-05, NFR-07 and NFR-08, then the integration close-out.
+- **Sprint 2: Sat 31 Oct – Sat 14 Nov 2026.** FR-09, FR-10, FR-13, FR-14, FR-15, NFR-01, NFR-02, NFR-03, NFR-05, NFR-07 and NFR-08, then the integration close-out.
 
 The code comes from the exploratory prototype, kept on the git tag `prototype` (commit `b5bf4d7`). Requirement IDs refer to [requirements.md](requirements.md); decision and limitation IDs (A…, L…) refer to [decisions.md](decisions.md).
 
@@ -445,7 +445,7 @@ As the team, we want a protected repository with the app foundation on `main`, s
 
 ---
 
-## 5. Sprint 2 (31 Oct – 10 Nov 2026): remaining FRs, NFR evidence and close-out
+## 5. Sprint 2 (31 Oct – 14 Nov 2026): remaining FRs, NFR evidence and close-out
 
 Evidence goes in `docs/evidence/<NFR-id>/`: method, raw output, result against the requirement, date and commit. New test scripts go under `tests/` and into `package.json`.
 
