@@ -42,6 +42,8 @@ This is a **demo**: SMS and payments are mocked, customers sign in with Firebase
 ### 2. Firestore (Build → Firestore Database)
 - [ ] The default database exists in Native mode in **asia-southeast1** (`firebase.json` says so). If it does not, create it there in production (locked) mode; the rules deploy replaces the locked rules.
 
+- [ ] **Audit log TTL (NFR-08).** Firestore -> TTL policies: `auditLog` collection, field `expireAt`, state **Active** (switched on 15 Nov 2026). Check with `gcloud firestore fields ttls list --project=fresher-6d857`.
+
 ### 3. App Check (on)
 Follow "Turning App Check on" at the end. The reCAPTCHA Enterprise key is created and registered under App Check (done); put its key ID in `.env.local` as `VITE_APP_CHECK_SITE_KEY`. The production build fails without it. Add the preview channel host to the key once the channel exists (Part 4). Done for the preview channel and the live site (10 Nov 2026); a new preview channel host must be added to the key before it is shared.
 
