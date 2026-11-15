@@ -163,22 +163,11 @@ A hold lasts 10 minutes. Customers with two recorded no-shows at a shop pay a 50
 | NFR-07 | Cost | < S$5 infrastructure and messaging cost per active shop per month at 200 bookings | [NFR-07](docs/evidence/NFR-07) |
 | NFR-08 | Auditability | 100% of state changes audited; 12-month retention | [NFR-08](docs/evidence/NFR-08) |
 
-## Screens
-
-| Screen | Requirements |
-|---|---|
-| Landing / shop discovery | FR-01 |
-| Shop page (service → barber → date → time) | FR-02, FR-06, FR-07 |
-| Booking summary, OTP, confirmation | FR-03, FR-05 |
-| Deposit checkout | FR-13 |
-| My Bookings (upcoming / history) | FR-04, FR-05, FR-11 |
-| Waitlist offer | FR-15 |
-| Staff sign-in and shop configuration | FR-06, FR-07 |
-| Barber schedule | FR-08, FR-09, FR-12 |
-| Queue management | FR-10 |
-| Shop dashboard | FR-14 |
-
 > **Mock data:** shops, barbers, customers and appointments in the demo are mock data. Reminders, delay warnings and deposit payments are simulated, so no reminder is sent and no money moves. Sign-in codes are sent by real SMS.
+
+## Project history
+
+Fresher began as an early working prototype built in late September 2026 to test the architecture and the main screens, and the team used it as the starting point for the sprints. During Sprints 1 and 2 each user story was brought from it onto main as its own pull request in dependency order (#2 to #43, in the order listed in `docs/team-plan.md`), reviewed by a teammate and checked against its acceptance criteria before it merged. PR-19 (#43) then checked that the integrated code matched the prototype. The sprints went beyond the prototype with measured evidence for every non-functional requirement and new test suites, the security, accessibility and cost findings and the fixes that came from them, and the deployment and demo. Commit messages that mention the prototype tag refer to this earlier version, which is no longer kept as a tag in the repository.
 
 ## Known limitations
 
