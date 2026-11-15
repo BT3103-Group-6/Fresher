@@ -5,8 +5,8 @@
 # On every pull request and push to main it runs, on a clean machine, the checks each
 # PR description reported running by hand: functions lint, the production build, and
 # the 430 tests that need no Firebase emulators.
-# The full emulator suite (npm run test:rules) runs only when started by hand from the
-# Actions tab, until it has passed there at least once.
+# A second job runs the full emulator suite (npm run test:rules, 741 tests) on the same
+# events, and can also be started by hand from the Actions tab.
 # Nothing here deploys. Automatic deployment (US 26, part 2) needs a Firebase service
 # account secret and stays future work.
 
@@ -89,10 +89,10 @@ jobs:
           tests/waitlistUi.test.mjs
 
   emulator-tests:
-    name: Emulator test suite (manual)
-    # Started by hand from the Actions tab. Two audit-trail tests are known to depend on
-    # the time of day (Sprint 2 retro), so this job does not block pull requests yet.
-    if: github.event_name == 'workflow_dispatch'
+    name: Emulator test suite
+    # Runs on every pull request and push to main. It was manual until the two
+    # time-dependent NFR-08 audit tests got a fixed clock (#57) and the suite had passed
+    # in Actions (runs 5 and 7).
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
