@@ -33,6 +33,23 @@ after(() => deleteApp(app))
 const MIN = 60e3
 const HOUR = 60 * MIN
 const SG_OFFSET = 8 * HOUR
+
+// Fixed test clock. Every run starts at 14:00 Singapore on the real date, and the clock then moves
+// in real time, so the order of audit records is kept. Without it, two tests ("startService writes
+// ..." and "replayed start and finish ...") failed when run between about 22:45 and 23:15 Singapore:
+// startIn(30) moved the visit past midnight, more than 60 minutes ahead, and startService refused
+// it as TOO_EARLY (Sprint 2 retro). The functions run in this process and read Date.now (as does
+// Timestamp.now), so they see the same clock. Firestore and gRPC deadlines use new Date(), which is
+// left alone.
+const realNow = Date.now
+const CLOCK_SHIFT = (() => {
+  const now = realNow()
+  const sgMidnight = Math.floor((now + SG_OFFSET) / (24 * HOUR)) * 24 * HOUR - SG_OFFSET
+  return sgMidnight + 14 * HOUR - now
+})()
+Date.now = () => realNow() + CLOCK_SHIFT
+after(() => { Date.now = realNow })
+
 const SHOP = 'shop1'
 const PHONE = '+6591230001'
 const ALL_DAY = { start: '00:00', end: '23:59' }
