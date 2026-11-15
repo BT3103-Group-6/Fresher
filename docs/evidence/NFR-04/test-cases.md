@@ -79,7 +79,7 @@ staff of another shop `owner('b')`/`barber('b')`, platform `admin()`, and signed
 | S-34, S-36 | `tests/nfr04.security.test.mjs` | `npx -y firebase-tools@latest emulators:exec --only firestore --project demo-fresher "node --test tests/nfr04.security.test.mjs"` | 2 passed, 0 failed, 0 skipped |
 | S-37 | `tests/nfr04.callables.test.mjs` | `node --test tests/nfr04.callables.test.mjs` (no emulator needed) | 3 passed, 0 failed, 0 skipped |
 
-Both are separate files so `tests/rules.test.mjs` still matches the prototype tag for the PR-19 parity check.
+Both are separate files so `tests/rules.test.mjs` stays unchanged for the PR-19 final integration check.
 
 ## Remaining gaps
 

@@ -8,7 +8,7 @@ import { doc, getDoc } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import { db, functions } from '@/firebase'
 import { formatDate, formatTime } from '@/lib/slots'
-import { normalizeSgMobile, otpErrorMessage, sendOtp, verifyOtp } from '@/lib/customerAuth'
+import { normalizeSgMobile, otpErrorMessage, sendOtp, signedInAs, verifyOtp } from '@/lib/customerAuth'
 import { draft, newAttempt } from '@/stores/booking'
 
 const router = useRouter()
@@ -106,6 +106,12 @@ async function onSendCode() {
     await nextTick()
     document.querySelector(errors.value.name ? '#name' : '#phone')?.focus()
     return
+  }
+  if (signedInAs(normalizeSgMobile(draft.phone))) {
+    // Number already verified on this device: confirm straight away, no new code (confirmBooking reads the
+    // number from the signed-in token).
+    verified.value = true
+    return onConfirm()
   }
   pending.value = true
   try {

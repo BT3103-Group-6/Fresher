@@ -1,6 +1,6 @@
 # NFR-08 audit trail: coverage
 
-Status: **draft, 5 Nov 2026.** Branch `feat/nfr-08-audit-trail`. Owner Haziq, reviewer K-Rei (Alson for the rules test).
+Status: **done, 9 Nov 2026** (rules and coverage tests merged in #31). Owner Haziq, reviewer K-Rei (Alson for the rules test).
 
 **Target (NFR-08):** 100% of booking state changes create an immutable audit record with booking ID, actor, timestamp, previous state and resulting state, kept for 12 months.
 
@@ -37,7 +37,7 @@ Every record is built by `auditRecord()` in `functions/booking.js` and written i
 | 11 | `noShow` | CONFIRMED → NO_SHOW | staff | `functions/service.js` | auto ID |
 | 12 | `noShowReversed` | NO_SHOW → CONFIRMED | staff | `functions/service.js` | auto ID |
 
-## 3. Transitions added by PR-15 to PR-17
+## 3. Transitions arriving with later PRs
 
 | PR | Action | From → to | Actor | Where |
 |---|---|---|---|---|
