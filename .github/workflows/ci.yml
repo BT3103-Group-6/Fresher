@@ -4,7 +4,7 @@
 #
 # On every pull request and push to main it runs, on a clean machine, the checks each
 # PR description reported running by hand: functions lint, the production build, and
-# the 424 tests that need no Firebase emulators.
+# the 430 tests that need no Firebase emulators.
 # The full emulator suite (npm run test:rules) runs only when started by hand from the
 # Actions tab, until it has passed there at least once.
 # Nothing here deploys. Automatic deployment (US 26, part 2) needs a Firebase service
@@ -76,6 +76,8 @@ jobs:
           tests/geocode.unit.test.mjs
           tests/history.test.mjs
           tests/notifications.unit.test.mjs
+          tests/nfr04.callables.test.mjs
+          tests/nfr05.failure.test.mjs
           tests/payments.unit.test.mjs
           tests/queue.unit.test.mjs
           tests/schedule.test.mjs
