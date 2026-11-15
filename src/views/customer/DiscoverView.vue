@@ -268,8 +268,9 @@ function slotText(shop) {
 
     <footer class="landing-footer">
       <p>
-        Fresher is a student prototype (BT3103). Shops, prices and bookings are mock data, and text messages
-        and payments are simulated. Nothing is sent to a real phone and no money moves.
+        Fresher is a student prototype (BT3103). Shops, prices and bookings are mock data. Reminders, delay
+        warnings and payments are simulated, so no reminder is sent and no money moves. Sign-in codes are
+        sent by real SMS.
       </p>
     </footer>
   </main>
